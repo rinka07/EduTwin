@@ -16,6 +16,7 @@ import string
 from datetime import datetime, timezone
 from typing import Optional
 
+import models
 from config import DB_PATH, INACTIF_APRES_SECONDES, CODE_ACCES_LONGUEUR
 
 
@@ -54,35 +55,10 @@ def _generer_code_acces() -> str:
 # Initialisation du schéma (CONTRAT §4)
 # ---------------------------------------------------------------------------
 def init_db() -> None:
-    """Crée les tables si elles n'existent pas encore."""
+    """Crée les tables si elles n'existent pas encore (schéma dans models.py)."""
     conn = get_conn()
     try:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS sessions (
-              session_id TEXT PRIMARY KEY, titre_tp TEXT, duree_minutes INTEGER,
-              nb_taches INTEGER, code_acces TEXT, document_id TEXT, created_at TEXT
-            );
-            CREATE TABLE IF NOT EXISTS taches (
-              id TEXT PRIMARY KEY, session_id TEXT, ordre INTEGER, titre TEXT, consigne TEXT
-            );
-            CREATE TABLE IF NOT EXISTS eleves (
-              eleve_id TEXT PRIMARY KEY, session_id TEXT, nom TEXT,
-              statut TEXT, joined_at TEXT, last_seen TEXT
-            );
-            CREATE TABLE IF NOT EXISTS eleve_taches (
-              eleve_id TEXT, tache_id TEXT, statut TEXT,
-              PRIMARY KEY (eleve_id, tache_id)
-            );
-            CREATE TABLE IF NOT EXISTS chunks (
-              id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ordre INTEGER, contenu TEXT
-            );
-            CREATE TABLE IF NOT EXISTS chat_historique (
-              id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, eleve_id TEXT,
-              question TEXT, reponse TEXT, timestamp TEXT
-            );
-            """
-        )
+        conn.executescript(models.SCHEMA)
         conn.commit()
     finally:
         conn.close()
@@ -138,6 +114,32 @@ def set_document(session_id: str, document_id: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def add_document(session_id: str, chemin_fichier: str, statut: str = "indexe") -> str:
+    """Enregistre une fiche TP brute stockée sur disque et renvoie son document_id.
+
+    Lot 1 : on stocke seulement le fichier + une entrée en base (table documents).
+    L'extraction / l'indexation du contenu relève du Lot 2.
+    Met aussi à jour `sessions.document_id` (dernier document importé).
+    """
+    document_id = _uuid_court()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO documents "
+            "(document_id, session_id, chemin_fichier, statut, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (document_id, session_id, chemin_fichier, statut, _now_iso()),
+        )
+        conn.execute(
+            "UPDATE sessions SET document_id = ? WHERE session_id = ?",
+            (document_id, session_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return document_id
 
 
 # ---------------------------------------------------------------------------
@@ -280,16 +282,19 @@ def patch_tache(eleve_id: str, tache_id: str, statut: str) -> None:
 
     Rafraîchit aussi le `last_seen` de l'élève (c'est une activité).
     """
+    now = _now_iso()
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO eleve_taches (eleve_id, tache_id, statut) VALUES (?, ?, ?) "
-            "ON CONFLICT(eleve_id, tache_id) DO UPDATE SET statut = excluded.statut",
-            (eleve_id, tache_id, statut),
+            "INSERT INTO eleve_taches (eleve_id, tache_id, statut, date_maj) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(eleve_id, tache_id) DO UPDATE SET "
+            "statut = excluded.statut, date_maj = excluded.date_maj",
+            (eleve_id, tache_id, statut, now),
         )
         conn.execute(
             "UPDATE eleves SET last_seen = ? WHERE eleve_id = ?",
-            (_now_iso(), eleve_id),
+            (now, eleve_id),
         )
         conn.commit()
     finally:

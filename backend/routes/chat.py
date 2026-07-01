@@ -2,13 +2,18 @@
 """Route du chat IA guidé.
 
 Endpoint : POST /api/chat
+
+PÉRIMÈTRE : cet endpoint relève du Lot 2 (LLM). Il est conservé ici pour que
+l'application intégrée fonctionne de bout en bout. Le Lot 1 lui fournit
+uniquement l'accès aux données et la fonction de diffusion `broadcast`
+(exposée aussi sous le nom `notify_session`).
 """
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
 import database as db
-from models import ChatBody, ChatResponse
+from schemas import ChatBody, ChatResponse
 from websocket_manager import broadcast
 
 # --- Import du module IA (Lot 2) avec repli mock si absent ---

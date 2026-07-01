@@ -4,14 +4,17 @@
 Endpoints :
 - POST  /api/session/{session_id}/eleve/join
 - PATCH /api/eleve/{eleve_id}/tache/{tache_id}
+
+Chaque mise à jour de progression (et chaque inscription) déclenche un push
+WebSocket vers les clients connectés au dashboard de la session.
 """
 from fastapi import APIRouter, HTTPException
 
 import database as db
-from models import EleveJoinBody, EleveJoinResponse, TachePatchBody, OkResponse
+from schemas import EleveJoinBody, EleveJoinResponse, TachePatchBody, OkResponse
 from websocket_manager import broadcast
 
-# Deux routers : les préfixes des deux endpoints diffèrent (session vs eleve).
+# Deux préfixes distincts : /api/session/... pour join, /api/eleve/... pour patch.
 router_session = APIRouter(prefix="/api/session", tags=["eleve"])
 router_eleve = APIRouter(prefix="/api/eleve", tags=["eleve"])
 
@@ -23,13 +26,13 @@ async def join(session_id: str, body: EleveJoinBody) -> dict:
     if not session:
         raise HTTPException(status_code=404, detail="session introuvable")
 
-    # Vérification du code d'accès (403 si invalide, comme le contrat l'exige).
+    # Code d'accès invalide -> 400 (tolérant à la casse et aux espaces).
     if body.code_acces.strip().upper() != session["code_acces"]:
-        raise HTTPException(status_code=403, detail="code_acces invalide")
+        raise HTTPException(status_code=400, detail="code d'accès invalide")
 
     resultat = db.join_eleve(session_id, body.nom_eleve)
 
-    # Diffusion WebSocket : évènement spécifique PUIS snapshot dashboard.
+    # Push WebSocket : évènement spécifique PUIS snapshot dashboard.
     await broadcast(session_id, {
         "type": "eleve_join",
         "data": {"eleve_id": resultat["eleve_id"], "nom": body.nom_eleve},
@@ -52,7 +55,7 @@ async def maj_tache(eleve_id: str, tache_id: str, body: TachePatchBody) -> dict:
     session_id = eleve["session_id"]
     db.patch_tache(eleve_id, tache_id, body.statut)
 
-    # Diffusion WebSocket : évènement spécifique PUIS snapshot dashboard.
+    # Push WebSocket : évènement spécifique PUIS snapshot dashboard.
     await broadcast(session_id, {
         "type": "tache_update",
         "data": {

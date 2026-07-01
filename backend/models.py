@@ -1,100 +1,89 @@
 # -*- coding: utf-8 -*-
-"""Modèles Pydantic des corps de requête et de réponse (contrat §1).
+"""Couche DONNÉES : définition du schéma SQLite (tables du Lot 1).
 
-Les noms de champs respectent EXACTEMENT le CONTRAT.md et ne doivent pas changer.
+Ce module ne contient QUE la structure des tables (DDL). La connexion et les
+fonctions d'accès sont dans `database.py` ; les schémas de validation HTTP
+(Pydantic) sont dans `schemas.py`.
+
+Correspondance avec les modèles attendus par le brief Lot 1 :
+
+    Session          -> table `sessions`
+    Eleve            -> table `eleves`
+    Tache            -> table `taches`
+    ProgressionTache -> table `eleve_taches`   (eleve_id, tache_id, statut, date_maj)
+    Document         -> table `documents`      (document_id, session_id, chemin_fichier, statut)
+
+Les tables `chunks` et `chat_historique` relèvent du périmètre Lot 2
+(indexation RAG + historique du chat IA). Elles sont déclarées ici pour que la
+base soit complète lors de l'assemblage, mais le Lot 1 ne les remplit pas.
 """
-from typing import List, Literal
-from pydantic import BaseModel
 
+# DDL idempotent : exécuté au démarrage par database.init_db().
+SCHEMA: str = """
+-- Session : une séance de TP créée par l'enseignant.
+CREATE TABLE IF NOT EXISTS sessions (
+  session_id    TEXT PRIMARY KEY,
+  titre_tp      TEXT,
+  duree_minutes INTEGER,
+  nb_taches     INTEGER,
+  code_acces    TEXT,
+  document_id   TEXT,
+  created_at    TEXT
+);
 
-# ---------------------------------------------------------------------------
-# Sessions
-# ---------------------------------------------------------------------------
-class SessionCreateBody(BaseModel):
-    """Body de POST /api/session/create."""
-    titre_tp: str
-    duree_minutes: int
-    nb_taches: int
+-- Tache : une étape du TP (titre + consigne), rattachée à une session.
+CREATE TABLE IF NOT EXISTS taches (
+  id         TEXT PRIMARY KEY,
+  session_id TEXT,
+  ordre      INTEGER,
+  titre      TEXT,
+  consigne   TEXT
+);
 
+-- Eleve : un élève ayant rejoint une session.
+CREATE TABLE IF NOT EXISTS eleves (
+  eleve_id   TEXT PRIMARY KEY,
+  session_id TEXT,
+  nom        TEXT,
+  statut     TEXT,
+  joined_at  TEXT,
+  last_seen  TEXT
+);
 
-class SessionCreateResponse(BaseModel):
-    session_id: str
-    code_acces: str
+-- ProgressionTache : statut d'une tâche pour un élève donné.
+CREATE TABLE IF NOT EXISTS eleve_taches (
+  eleve_id  TEXT,
+  tache_id  TEXT,
+  statut    TEXT,
+  date_maj  TEXT,
+  PRIMARY KEY (eleve_id, tache_id)
+);
 
+-- Document : fiche TP brute importée par l'enseignant (stockée sur disque).
+-- Le Lot 1 stocke seulement le fichier ; l'extraction/indexation est au Lot 2.
+CREATE TABLE IF NOT EXISTS documents (
+  document_id    TEXT PRIMARY KEY,
+  session_id     TEXT,
+  chemin_fichier TEXT,
+  statut         TEXT,
+  created_at     TEXT
+);
 
-class DocumentResponse(BaseModel):
-    document_id: str
-    statut: str  # toujours "indexe"
+-- (Périmètre Lot 2) Passages indexés de la fiche pour le RAG.
+CREATE TABLE IF NOT EXISTS chunks (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT,
+  ordre      INTEGER,
+  contenu    TEXT
+);
 
-
-# ---------------------------------------------------------------------------
-# Élèves
-# ---------------------------------------------------------------------------
-class EleveJoinBody(BaseModel):
-    """Body de POST /api/session/{session_id}/eleve/join."""
-    nom_eleve: str
-    code_acces: str
-
-
-class TacheEleve(BaseModel):
-    """Tâche telle que présentée à l'élève."""
-    id: str
-    titre: str
-    consigne: str
-
-
-class EleveJoinResponse(BaseModel):
-    eleve_id: str
-    taches: List[TacheEleve]
-
-
-class TachePatchBody(BaseModel):
-    """Body de PATCH /api/eleve/{eleve_id}/tache/{tache_id}."""
-    statut: Literal["en_cours", "bloque", "complete"]
-
-
-class OkResponse(BaseModel):
-    ok: bool
-
-
-# ---------------------------------------------------------------------------
-# Dashboard
-# ---------------------------------------------------------------------------
-class EleveDashboard(BaseModel):
-    eleve_id: str
-    nom: str
-    taches_completes: int
-    taches_total: int
-    statut: Literal["actif", "bloque", "inactif"]
-
-
-class DashboardResponse(BaseModel):
-    eleves: List[EleveDashboard]
-
-
-# ---------------------------------------------------------------------------
-# Chat
-# ---------------------------------------------------------------------------
-class ChatBody(BaseModel):
-    """Body de POST /api/chat."""
-    eleve_id: str
-    session_id: str
-    question: str
-
-
-class ChatResponse(BaseModel):
-    reponse: str
-    timestamp: str  # ISO 8601
-
-
-# ---------------------------------------------------------------------------
-# Infos session (endpoint utilitaire)
-# ---------------------------------------------------------------------------
-class SessionInfoResponse(BaseModel):
-    session_id: str
-    titre_tp: str
-    duree_minutes: int
-    nb_taches: int
-    code_acces: str
-    document_id: str | None = None
-    created_at: str
+-- (Périmètre Lot 2) Historique des échanges avec l'assistant IA.
+CREATE TABLE IF NOT EXISTS chat_historique (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT,
+  eleve_id   TEXT,
+  question   TEXT,
+  reponse    TEXT,
+  timestamp  TEXT
+);
+"""

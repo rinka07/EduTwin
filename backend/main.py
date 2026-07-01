@@ -3,13 +3,13 @@
 
 Assemble :
 - l'initialisation de la base SQLite au démarrage ;
-- les routers HTTP (session, élève, chat) ;
+- les routers du Lot 1 (session, élève) + l'endpoint chat du Lot 2 si présent ;
 - la route WebSocket temps réel /ws/session/{session_id} ;
 - le service des fichiers statiques du frontend (Lot 3) ;
 - CORS permissif (usage LAN) et l'endpoint /api/health.
 
-Lancer DEPUIS le dossier backend/ afin que `from ia import ...` et
-`from routes.xxx import ...` fonctionnent (sys.path inclut backend/).
+Lancer DEPUIS le dossier backend/ afin que `from routers.xxx import ...`
+(et `from ia import ...` pour le Lot 2) fonctionnent (sys.path inclut backend/).
 """
 from contextlib import asynccontextmanager
 
@@ -22,10 +22,9 @@ import database as db
 from config import HOST, PORT, FRONTEND_DIR
 from websocket_manager import manager
 
-# Import des routers HTTP.
-from routes.session import router as session_router
-from routes.eleve import router_session as eleve_session_router, router_eleve
-from routes.chat import router as chat_router
+# --- Routers du Lot 1 (Backend Core) ---
+from routers.session import router as session_router
+from routers.eleve import router_session as eleve_session_router, router_eleve
 
 
 @asynccontextmanager
@@ -58,11 +57,22 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-# --- Inclusion des routers HTTP ---
+# --- Inclusion des routers du Lot 1 ---
 app.include_router(session_router)
 app.include_router(eleve_session_router)
 app.include_router(router_eleve)
-app.include_router(chat_router)
+
+# --- Endpoint chat (périmètre Lot 2) : monté s'il est disponible ---
+# Le Lot 1 n'implémente pas le chat ; on branche l'endpoint fourni par le Lot 2
+# (routes/chat.py) pour que l'application intégrée réponde sur /api/chat.
+try:
+    from routes.chat import router as chat_router
+    app.include_router(chat_router)
+except Exception as exc:  # pragma: no cover - le chat est optionnel côté Lot 1
+    import logging
+    logging.getLogger("edutwin").warning(
+        "Endpoint chat (Lot 2) non chargé : %s", exc
+    )
 
 
 # --- WebSocket temps réel par session ---

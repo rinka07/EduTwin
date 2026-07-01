@@ -18,12 +18,15 @@ Frontend **HTML/CSS/JS vanilla** servi par FastAPI. Serveur lancé sur `--host 0
 ### `POST /api/session/{session_id}/document`
 - Body : `multipart/form-data` — champ fichier nommé `fichier` (PDF ou Word .docx)
 - Resp : `{ "document_id": str, "statut": "indexe" }`
-- Effet : extrait le texte, découpe en `nb_taches` tâches + en chunks RAG, stocke le tout.
+- Effet (Lot 1) : **stocke le fichier brut** sur disque + crée une entrée en base
+  (table `documents`). L'extraction/découpage (tâches + chunks RAG) est réalisée
+  par le **Lot 2**, qui appelle ensuite `db.add_taches` / `db.add_chunks`.
 
 ### `POST /api/session/{session_id}/eleve/join`
 - Body : `{ "nom_eleve": str, "code_acces": str }`
 - Resp : `{ "eleve_id": str, "taches": [ { "id": str, "titre": str, "consigne": str } ] }`
-- Erreur code invalide : HTTP 403 `{ "detail": "code_acces invalide" }`
+- Erreur code invalide : HTTP 400 `{ "detail": "code d'accès invalide" }`
+- Erreur session introuvable : HTTP 404
 
 ### `PATCH /api/eleve/{eleve_id}/tache/{tache_id}`
 - Body : `{ "statut": "en_cours" | "bloque" | "complete" }`
@@ -109,7 +112,12 @@ CREATE TABLE eleves (
   statut TEXT, joined_at TEXT, last_seen TEXT
 );
 CREATE TABLE eleve_taches (
-  eleve_id TEXT, tache_id TEXT, statut TEXT, PRIMARY KEY (eleve_id, tache_id)
+  eleve_id TEXT, tache_id TEXT, statut TEXT, date_maj TEXT,
+  PRIMARY KEY (eleve_id, tache_id)
+);
+CREATE TABLE documents (   -- fiche TP brute stockée (Lot 1)
+  document_id TEXT PRIMARY KEY, session_id TEXT, chemin_fichier TEXT,
+  statut TEXT, created_at TEXT
 );
 CREATE TABLE chunks (
   id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ordre INTEGER, contenu TEXT

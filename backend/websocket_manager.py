@@ -69,3 +69,10 @@ manager = WebSocketManager()
 async def broadcast(session_id: str, message: dict) -> None:
     """Raccourci module-level pour diffuser via l'instance partagée."""
     await manager.broadcast(session_id, message)
+
+
+# Alias explicite exposé aux autres lots (notamment le Lot 2/chat) pour pousser
+# une notification à tous les clients connectés au dashboard d'une session.
+async def notify_session(session_id: str, message: dict) -> None:
+    """Notifie les clients WebSocket d'une session (utilisé par le Lot 2)."""
+    await manager.broadcast(session_id, message)

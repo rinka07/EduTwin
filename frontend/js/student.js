@@ -98,8 +98,10 @@ formJoin.addEventListener("submit", async (e) => {
     entrerVueTP();
     toast(`Bienvenue, ${nom_eleve} !`, "success");
   } catch (err) {
-    // 403 = code invalide (contrat)
-    const msg = err.status === 403 ? "Code d'accès invalide." : (err.message || "Connexion impossible.");
+    // 400 (brief Lot 1) ou 403 = code d'accès invalide
+    const msg = (err.status === 400 || err.status === 403)
+      ? "Code d'accès invalide."
+      : (err.message || "Connexion impossible.");
     document.getElementById("err-join").textContent = msg;
     toast(msg, "danger");
   } finally {
