@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Routes de gestion des sessions et d'import de la fiche TP (Lot 1).
+"""Routes de gestion des sessions et d'import de la fiche TP.
 
 Endpoints :
 - POST  /api/session/create
-- POST  /api/session/{session_id}/document   (stockage brut — pas d'extraction)
+- POST  /api/session/{session_id}/document   (stockage + indexation IA)
 - GET   /api/session/{session_id}/dashboard
 - GET   /api/session/{session_id}            (infos session — utilitaire)
 
-Périmètre Lot 1 : l'endpoint /document se contente de STOCKER le fichier sur
-disque et de créer une entrée en base. L'extraction et l'indexation du contenu
-(découpage en tâches/chunks) sont réalisées par le Lot 2.
+L'endpoint /document stocke le fichier brut (table documents) PUIS le fait
+indexer par le module IA (Lot 2) : extraction du texte, découpage en tâches et
+en chunks RAG. L'enseignant peut ensuite ajuster les tâches via l'éditeur.
 """
 import shutil
 
@@ -22,6 +22,21 @@ from schemas import (
     DocumentResponse, DashboardResponse, SessionInfoResponse,
 )
 
+# --- Module IA (Lot 2) avec repli si absent ---
+# Permet au backend de fonctionner même sans le module ia/ (tâches génériques).
+try:
+    from ia import extraire_et_decouper  # type: ignore
+except ImportError:  # pragma: no cover - repli de développement
+    def extraire_et_decouper(chemin_fichier: str, nb_taches: int) -> dict:
+        return {
+            "taches": [
+                {"titre": f"Tâche {i + 1}",
+                 "consigne": "Consigne à compléter (module IA indisponible)."}
+                for i in range(max(nb_taches, 1))
+            ],
+            "chunks": [],
+        }
+
 router = APIRouter(prefix="/api/session", tags=["session"])
 
 
@@ -33,11 +48,7 @@ def creer_session(body: SessionCreateBody) -> dict:
 
 @router.post("/{session_id}/document", response_model=DocumentResponse)
 async def importer_document(session_id: str, fichier: UploadFile = File(...)) -> dict:
-    """Stocke la fiche TP brute (PDF/Word) sur disque et crée l'entrée en base.
-
-    NB (Lot 1) : aucune extraction ici. Le Lot 2 lira le fichier stocké pour
-    l'indexer. La valeur de `statut` renvoyée est "indexe" (figée par le contrat).
-    """
+    """Stocke la fiche TP (PDF/Word) puis l'indexe (tâches + chunks RAG) via l'IA."""
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="session introuvable")
@@ -60,6 +71,19 @@ async def importer_document(session_id: str, fichier: UploadFile = File(...)) ->
         fichier.file.close()
 
     document_id = db.add_document(session_id, str(chemin))
+
+    # Indexation IA : extraction du texte + découpage en tâches et chunks.
+    # Un fichier illisible/corrompu → 400 explicite (plutôt qu'une 500 opaque).
+    try:
+        resultat = extraire_et_decouper(str(chemin), session["nb_taches"])
+    except Exception as exc:  # noqa: BLE001 - message utilisateur clair
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fiche TP illisible ou format non pris en charge : {exc}",
+        )
+    db.add_taches(session_id, resultat.get("taches", []))
+    db.add_chunks(session_id, resultat.get("chunks", []))
+
     return {"document_id": document_id, "statut": "indexe"}
 
 

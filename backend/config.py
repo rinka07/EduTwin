@@ -4,11 +4,17 @@
 Toutes les constantes de chemins et de réseau sont définies ici afin d'être
 partagées par les autres modules. Le serveur tourne en LAN, hors-ligne.
 """
+import os
 from pathlib import Path
 
 # --- Réseau (LAN) ---
 HOST = "0.0.0.0"          # écoute sur toutes les interfaces (accès LAN)
 PORT = 8000
+
+# --- Authentification enseignant ---
+# Mot de passe protégeant l'espace enseignant (les élèves n'y ont pas accès).
+# Personnalisable au lancement :  export EDUTWIN_MDP="mon-mot-de-passe"
+MOT_DE_PASSE_ENSEIGNANT = os.environ.get("EDUTWIN_MDP", "edutwin")
 
 # --- Chemins ---
 # Racine du backend (dossier contenant ce fichier)

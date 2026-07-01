@@ -15,7 +15,10 @@
    Ainsi l'écran reste simple et 100 % conforme au contrat.
    ========================================================================== */
 
-import { postJSON, patchJSON } from "./api.js";
+import { postJSON, patchJSON, getJSON } from "./api.js";
+
+// Clé de persistance : garde l'élève connecté après une actualisation de page.
+const CLE_ELEVE = "edutwin_eleve";
 
 /* --- Helpers UI locaux -------------------------------------------------- */
 function esc(s) {
@@ -95,6 +98,9 @@ formJoin.addEventListener("submit", async (e) => {
     state.taches = data.taches || [];
     state.taches.forEach((t) => state.statuts.set(t.id, null));
 
+    // Mémorise l'élève pour rester connecté après une actualisation.
+    localStorage.setItem(CLE_ELEVE, JSON.stringify({ eleveId: state.eleveId }));
+
     entrerVueTP();
     toast(`Bienvenue, ${nom_eleve} !`, "success");
   } catch (err) {
@@ -120,6 +126,7 @@ function erreurChamp(idErreur, message, idChamp) {
 function entrerVueTP() {
   document.getElementById("ecran-join").classList.add("hidden");
   document.getElementById("ecran-tp").classList.remove("hidden");
+  document.getElementById("btn-quitter")?.classList.remove("hidden");
   document.getElementById("header-eleve").textContent = state.nom;
   document.getElementById("tp-sous-titre").textContent =
     "Mettez à jour votre avancement et posez vos questions à l'assistant.";
@@ -304,3 +311,34 @@ function formaterHeure(iso) {
   if (isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
+
+/* --------------------------------------------------------------------------
+   Persistance : restauration de la session élève après actualisation
+   -------------------------------------------------------------------------- */
+function quitterSession() {
+  localStorage.removeItem(CLE_ELEVE);
+  location.reload();
+}
+document.getElementById("btn-quitter")?.addEventListener("click", quitterSession);
+
+(async function restaurerEleve() {
+  let sauvegarde = null;
+  try { sauvegarde = JSON.parse(localStorage.getItem(CLE_ELEVE) || "null"); } catch (_) {}
+  if (!sauvegarde?.eleveId) return;
+
+  try {
+    // Recharge tâches + progression à jour depuis le serveur (source de vérité).
+    const data = await getJSON(`/api/eleve/${encodeURIComponent(sauvegarde.eleveId)}`);
+    state.sessionId = data.session_id;
+    state.eleveId = data.eleve_id;
+    state.nom = data.nom;
+    state.taches = data.taches || [];
+    state.statuts = new Map();
+    state.taches.forEach((t) => state.statuts.set(t.id, null));
+    (data.progression || []).forEach((p) => state.statuts.set(p.tache_id, p.statut));
+    entrerVueTP();
+  } catch (err) {
+    // Élève/séance disparu (base réinitialisée) : on revient à la connexion.
+    localStorage.removeItem(CLE_ELEVE);
+  }
+})();

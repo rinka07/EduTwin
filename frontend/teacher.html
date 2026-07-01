@@ -26,174 +26,251 @@
       </a>
       <span class="app-header__spacer"></span>
       <span class="app-header__meta">Espace Enseignant</span>
+      <!-- Bouton de déconnexion (visible une fois connecté) -->
+      <button class="btn btn--sm btn--ghost-light hidden" type="button" id="btn-logout">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        <span>Déconnexion</span>
+      </button>
     </div>
   </header>
 
-  <main id="main" class="container">
-    <div class="page-title">
-      <h1>Espace Enseignant</h1>
-    </div>
-    <p class="page-subtitle">Créez une session, importez la fiche TP puis suivez la progression en temps réel.</p>
-
-    <div class="teacher-layout">
-      <!-- ================= COLONNE CONFIGURATION ================= -->
-      <div class="teacher-config">
-
-        <!-- Étape 1 : nouvelle session -->
-        <section class="card" aria-labelledby="titre-session">
-          <div class="card__header">
-            <span class="card__icon" aria-hidden="true">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-            </span>
-            <h2 class="card__title" id="titre-session">1. Nouvelle session</h2>
-          </div>
-
-          <form id="form-session" novalidate>
-            <div class="field">
-              <label class="field__label" for="titre_tp">Titre du TP <span class="field__req" aria-hidden="true">*</span></label>
-              <input class="input" type="text" id="titre_tp" name="titre_tp" required
-                     placeholder="Ex. Boucles et conditions en Python" autocomplete="off">
-              <p class="field__error" id="err-titre_tp" aria-live="polite"></p>
-            </div>
-            <div class="flex gap-4">
-              <div class="field flex-1">
-                <label class="field__label" for="duree_minutes">Durée (min) <span class="field__req" aria-hidden="true">*</span></label>
-                <input class="input input--mono" type="number" id="duree_minutes" name="duree_minutes"
-                       min="5" max="480" step="5" value="90" required>
-              </div>
-              <div class="field flex-1">
-                <label class="field__label" for="nb_taches">Nb tâches <span class="field__req" aria-hidden="true">*</span></label>
-                <input class="input input--mono" type="number" id="nb_taches" name="nb_taches"
-                       min="1" max="20" value="5" required>
-              </div>
-            </div>
-            <p class="field__error" id="err-session" aria-live="polite"></p>
-            <button class="btn btn--primary btn--block mt-4" type="submit" id="btn-creer">
-              <span class="btn__label">Créer la session</span>
-            </button>
-          </form>
-
-          <!-- Code d'accès (affiché après création) -->
-          <div class="access-code mt-6 hidden" id="bloc-code">
-            <div class="access-code__label">Code d'accès élève</div>
-            <div class="access-code__value" id="code-acces" aria-live="polite">— — — — — —</div>
-            <button class="btn btn--sm copy-btn" type="button" id="btn-copier-code">
-              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-              <span>Copier le code</span>
-            </button>
-            <div class="access-code__id mt-4">
-              session_id : <span id="session-id">—</span>
-              <button class="btn btn--sm copy-btn mt-2" type="button" id="btn-copier-lien" style="display:block;margin-inline:auto;">
-                Copier le lien élève
+  <main id="main">
+    <!-- ================= ÉCRAN DE CONNEXION ENSEIGNANT ================= -->
+    <section class="join-screen" id="ecran-login">
+      <div class="card join-card" aria-labelledby="titre-login">
+        <div class="card__header">
+          <span class="card__icon" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </span>
+          <h1 class="card__title" id="titre-login" style="font-size:var(--fs-xl);">Espace Enseignant</h1>
+        </div>
+        <p class="text-sm text-muted mb-4">Accès réservé. Saisissez le mot de passe pour gérer vos séances de TP.</p>
+        <form id="form-login" novalidate>
+          <div class="field">
+            <label class="field__label" for="mot_de_passe">Mot de passe <span class="field__req" aria-hidden="true">*</span></label>
+            <div class="input-password">
+              <input class="input" type="password" id="mot_de_passe" name="mot_de_passe" required
+                     autocomplete="current-password" placeholder="••••••••">
+              <button class="input-password__toggle" type="button" id="btn-voir-mdp" aria-label="Afficher le mot de passe">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
+            <p class="field__error" id="err-login" aria-live="polite"></p>
           </div>
-        </section>
-
-        <!-- Étape 2 : import fiche TP -->
-        <section class="card" aria-labelledby="titre-doc">
-          <div class="card__header">
-            <span class="card__icon" aria-hidden="true">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
-            </span>
-            <h2 class="card__title" id="titre-doc">2. Fiche TP</h2>
-          </div>
-
-          <form id="form-doc">
-            <label class="dropzone" for="fichier" id="dropzone">
-              <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-              <strong id="dropzone-nom">Choisir un fichier PDF ou Word</strong>
-              <span class="text-xs">Le texte sera extrait et découpé en tâches.</span>
-            </label>
-            <input class="sr-only" type="file" id="fichier" name="fichier" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-            <button class="btn btn--outline btn--block mt-4" type="submit" id="btn-importer" disabled>
-              <span class="btn__label">Importer et indexer</span>
-            </button>
-          </form>
-          <div class="doc-status mt-4 hidden" id="doc-status" aria-live="polite"></div>
-          <p class="field__hint mt-2">Créez d'abord la session, puis importez la fiche.</p>
-        </section>
+          <button class="btn btn--primary btn--block mt-4" type="submit" id="btn-login">
+            <span class="btn__label">Se connecter</span>
+          </button>
+        </form>
       </div>
+    </section>
 
-      <!-- ================= COLONNE DASHBOARD ================= -->
-      <section class="card card--pad-0" aria-labelledby="titre-dashboard" id="dashboard-section" style="padding: var(--sp-6);">
-        <div class="flex items-center justify-between wrap gap-3 mb-4">
-          <div class="card__header" style="margin:0;">
-            <span class="card__icon" aria-hidden="true">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-            </span>
-            <h2 class="card__title" id="titre-dashboard">Dashboard temps réel</h2>
-          </div>
-          <span class="ws-status is-offline" id="ws-status">
-            <span class="ws-status__dot" aria-hidden="true"></span>
-            <span id="ws-status-label">Hors ligne</span>
-          </span>
+    <!-- ================= APPLICATION (masquée avant connexion) ================= -->
+    <div class="container hidden" id="app-enseignant">
+      <div class="page-title">
+        <h1>Espace Enseignant</h1>
+      </div>
+      <p class="page-subtitle">Créez une session, importez la fiche TP, ajustez les tâches puis suivez la progression en temps réel.</p>
+
+      <div class="teacher-layout">
+        <!-- ================= COLONNE CONFIGURATION ================= -->
+        <div class="teacher-config">
+
+          <!-- Historique des séances -->
+          <section class="card" aria-labelledby="titre-histo">
+            <div class="card__header">
+              <span class="card__icon" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+              </span>
+              <h2 class="card__title" id="titre-histo">Historique des séances</h2>
+            </div>
+            <div id="historique-liste" class="histo-list"><!-- rempli par teacher.js --></div>
+            <div class="empty" id="histo-empty">
+              <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
+              <span class="empty__title">Aucune séance</span>
+              <span class="text-sm">Créez votre première session ci-dessous.</span>
+            </div>
+          </section>
+
+          <!-- Étape 1 : nouvelle session -->
+          <section class="card" aria-labelledby="titre-session">
+            <div class="card__header">
+              <span class="card__icon" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </span>
+              <h2 class="card__title" id="titre-session">1. Nouvelle session</h2>
+            </div>
+
+            <form id="form-session" novalidate>
+              <div class="field">
+                <label class="field__label" for="titre_tp">Titre du TP <span class="field__req" aria-hidden="true">*</span></label>
+                <input class="input" type="text" id="titre_tp" name="titre_tp" required
+                       placeholder="Ex. Boucles et conditions en Python" autocomplete="off">
+                <p class="field__error" id="err-titre_tp" aria-live="polite"></p>
+              </div>
+              <div class="flex gap-4">
+                <div class="field flex-1">
+                  <label class="field__label" for="duree_minutes">Durée (min) <span class="field__req" aria-hidden="true">*</span></label>
+                  <input class="input input--mono" type="number" id="duree_minutes" name="duree_minutes"
+                         min="5" max="480" step="5" value="90" required>
+                </div>
+                <div class="field flex-1">
+                  <label class="field__label" for="nb_taches">Nb tâches <span class="field__req" aria-hidden="true">*</span></label>
+                  <input class="input input--mono" type="number" id="nb_taches" name="nb_taches"
+                         min="1" max="20" value="5" required>
+                </div>
+              </div>
+              <p class="field__error" id="err-session" aria-live="polite"></p>
+              <button class="btn btn--primary btn--block mt-4" type="submit" id="btn-creer">
+                <span class="btn__label">Créer la session</span>
+              </button>
+            </form>
+
+            <!-- Code d'accès (affiché après création / ouverture d'une séance) -->
+            <div class="access-code mt-6 hidden" id="bloc-code">
+              <div class="access-code__label">Code d'accès élève</div>
+              <div class="access-code__value" id="code-acces" aria-live="polite">— — — — — —</div>
+              <button class="btn btn--sm copy-btn" type="button" id="btn-copier-code">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                <span>Copier le code</span>
+              </button>
+              <div class="access-code__id mt-4">
+                session_id : <span id="session-id">—</span>
+                <button class="btn btn--sm copy-btn mt-2" type="button" id="btn-copier-lien" style="display:block;margin-inline:auto;">
+                  Copier le lien élève
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Étape 2 : import fiche TP -->
+          <section class="card" aria-labelledby="titre-doc">
+            <div class="card__header">
+              <span class="card__icon" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+              </span>
+              <h2 class="card__title" id="titre-doc">2. Fiche TP</h2>
+            </div>
+
+            <form id="form-doc">
+              <label class="dropzone" for="fichier" id="dropzone">
+                <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                <strong id="dropzone-nom">Choisir un fichier PDF ou Word</strong>
+                <span class="text-xs">Le texte sera extrait et découpé en tâches.</span>
+              </label>
+              <input class="sr-only" type="file" id="fichier" name="fichier" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+              <button class="btn btn--outline btn--block mt-4" type="submit" id="btn-importer" disabled>
+                <span class="btn__label">Importer et indexer</span>
+              </button>
+            </form>
+            <div class="doc-status mt-4 hidden" id="doc-status" aria-live="polite"></div>
+            <p class="field__hint mt-2">Créez d'abord la session, puis importez la fiche.</p>
+          </section>
+
+          <!-- Étape 3 : édition des tâches (proposées par l'IA) -->
+          <section class="card hidden" aria-labelledby="titre-taches" id="card-taches">
+            <div class="card__header">
+              <span class="card__icon" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </span>
+              <h2 class="card__title" id="titre-taches">3. Tâches du TP</h2>
+            </div>
+            <p class="field__hint mb-4">Ajustez les tâches proposées par l'assistant IA : modifiez le titre ou la consigne, ajoutez ou supprimez une étape.</p>
+            <div id="taches-editor" class="taches-editor"><!-- rempli par teacher.js --></div>
+            <div class="empty hidden" id="taches-empty">
+              <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+              <span class="empty__title">Aucune tâche</span>
+              <span class="text-sm">Importez une fiche TP ou ajoutez les tâches manuellement.</span>
+            </div>
+            <button class="btn btn--outline btn--block mt-4" type="button" id="btn-ajouter-tache">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              <span>Ajouter une tâche</span>
+            </button>
+          </section>
         </div>
 
-        <!-- KPI -->
-        <div class="kpi-grid" aria-label="Indicateurs clés">
-          <div class="kpi">
-            <span class="kpi__icon kpi__icon--connected" aria-hidden="true">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <!-- ================= COLONNE DASHBOARD ================= -->
+        <section class="card card--pad-0" aria-labelledby="titre-dashboard" id="dashboard-section" style="padding: var(--sp-6);">
+          <div class="flex items-center justify-between wrap gap-3 mb-4">
+            <div class="card__header" style="margin:0;">
+              <span class="card__icon" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+              </span>
+              <div>
+                <h2 class="card__title" id="titre-dashboard">Dashboard temps réel</h2>
+                <div class="text-sm text-muted" id="dashboard-session-nom"></div>
+              </div>
+            </div>
+            <span class="ws-status is-offline" id="ws-status">
+              <span class="ws-status__dot" aria-hidden="true"></span>
+              <span id="ws-status-label">Hors ligne</span>
             </span>
-            <div>
-              <div class="kpi__value" id="kpi-connectes">0</div>
-              <div class="kpi__label">Élèves connectés</div>
-            </div>
-          </div>
-          <div class="kpi">
-            <span class="kpi__icon kpi__icon--blocked" aria-hidden="true">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
-            </span>
-            <div>
-              <div class="kpi__value" id="kpi-bloques">0</div>
-              <div class="kpi__label">Élèves bloqués</div>
-            </div>
-          </div>
-          <div class="kpi">
-            <span class="kpi__icon kpi__icon--progress" aria-hidden="true">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 2 12 12"/></svg>
-            </span>
-            <div>
-              <div class="kpi__value" id="kpi-progression">0%</div>
-              <div class="kpi__label">Progression moyenne</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="dashboard-grid">
-          <!-- Table élèves -->
-          <div>
-            <h3 class="mb-2">Élèves</h3>
-            <div class="table-wrap">
-              <table class="table" id="table-eleves">
-                <thead>
-                  <tr><th scope="col">Nom</th><th scope="col">Progression</th><th scope="col">Statut</th></tr>
-                </thead>
-                <tbody id="tbody-eleves"><!-- rempli par teacher.js --></tbody>
-              </table>
-            </div>
-            <div class="empty hidden" id="eleves-empty">
-              <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-              <span class="empty__title">Aucun élève connecté</span>
-              <span class="text-sm">Communiquez le code d'accès pour que les élèves rejoignent.</span>
-            </div>
           </div>
 
-          <!-- Flux d'activité -->
-          <div>
-            <h3 class="mb-2">Flux d'activité</h3>
-            <div class="card" style="padding: var(--sp-4);">
-              <div class="feed" id="feed" aria-live="polite" aria-label="Flux d'activité en temps réel"></div>
-              <div class="empty" id="feed-empty">
-                <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16"/><path d="M4 8h16"/><path d="M4 16h10"/></svg>
-                <span class="empty__title">En attente d'activité</span>
-                <span class="text-sm">Les connexions, avancées et questions apparaîtront ici.</span>
+          <!-- KPI -->
+          <div class="kpi-grid" aria-label="Indicateurs clés">
+            <div class="kpi">
+              <span class="kpi__icon kpi__icon--connected" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              <div>
+                <div class="kpi__value" id="kpi-connectes">0</div>
+                <div class="kpi__label">Élèves connectés</div>
+              </div>
+            </div>
+            <div class="kpi">
+              <span class="kpi__icon kpi__icon--blocked" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+              </span>
+              <div>
+                <div class="kpi__value" id="kpi-bloques">0</div>
+                <div class="kpi__label">Élèves bloqués</div>
+              </div>
+            </div>
+            <div class="kpi">
+              <span class="kpi__icon kpi__icon--progress" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 2 12 12"/></svg>
+              </span>
+              <div>
+                <div class="kpi__value" id="kpi-progression">0%</div>
+                <div class="kpi__label">Progression moyenne</div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+
+          <div class="dashboard-grid">
+            <!-- Table élèves -->
+            <div>
+              <h3 class="mb-2">Élèves</h3>
+              <div class="table-wrap">
+                <table class="table" id="table-eleves">
+                  <thead>
+                    <tr><th scope="col">Nom</th><th scope="col">Progression</th><th scope="col">Statut</th></tr>
+                  </thead>
+                  <tbody id="tbody-eleves"><!-- rempli par teacher.js --></tbody>
+                </table>
+              </div>
+              <div class="empty hidden" id="eleves-empty">
+                <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                <span class="empty__title">Aucun élève connecté</span>
+                <span class="text-sm">Communiquez le code d'accès pour que les élèves rejoignent.</span>
+              </div>
+            </div>
+
+            <!-- Flux d'activité -->
+            <div>
+              <h3 class="mb-2">Flux d'activité</h3>
+              <div class="card" style="padding: var(--sp-4);">
+                <div class="feed" id="feed" aria-live="polite" aria-label="Flux d'activité en temps réel"></div>
+                <div class="empty" id="feed-empty">
+                  <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16"/><path d="M4 8h16"/><path d="M4 16h10"/></svg>
+                  <span class="empty__title">En attente d'activité</span>
+                  <span class="text-sm">Les connexions, avancées et questions apparaîtront ici.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </main>
 

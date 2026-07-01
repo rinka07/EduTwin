@@ -38,12 +38,30 @@ async function traiterReponse(response) {
   return texte ? JSON.parse(texte) : {};
 }
 
+/* --------------------------------------------------------------------------
+   Jeton enseignant (X-Edu-Token) — stocké dans localStorage.
+   -------------------------------------------------------------------------- */
+const CLE_TOKEN = "edutwin_token";
+
+export function setTokenEnseignant(token) {
+  if (token) localStorage.setItem(CLE_TOKEN, token);
+  else localStorage.removeItem(CLE_TOKEN);
+}
+export function getTokenEnseignant() {
+  return localStorage.getItem(CLE_TOKEN) || "";
+}
+
+/** Construit les en-têtes en ajoutant le jeton enseignant s'il est présent. */
+function entetes(base = {}) {
+  const h = { "Accept": "application/json", ...base };
+  const token = getTokenEnseignant();
+  if (token) h["X-Edu-Token"] = token;
+  return h;
+}
+
 /** GET JSON. */
 export async function getJSON(url) {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: { "Accept": "application/json" },
-  });
+  const response = await fetch(url, { method: "GET", headers: entetes() });
   return traiterReponse(response);
 }
 
@@ -51,7 +69,7 @@ export async function getJSON(url) {
 export async function postJSON(url, body) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    headers: entetes({ "Content-Type": "application/json" }),
     body: JSON.stringify(body ?? {}),
   });
   return traiterReponse(response);
@@ -61,9 +79,15 @@ export async function postJSON(url, body) {
 export async function patchJSON(url, body) {
   const response = await fetch(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    headers: entetes({ "Content-Type": "application/json" }),
     body: JSON.stringify(body ?? {}),
   });
+  return traiterReponse(response);
+}
+
+/** DELETE JSON. */
+export async function deleteJSON(url) {
+  const response = await fetch(url, { method: "DELETE", headers: entetes() });
   return traiterReponse(response);
 }
 
@@ -78,7 +102,8 @@ export async function uploadFile(url, fichier, champ = "fichier") {
   formData.append(champ, fichier);
   const response = await fetch(url, {
     method: "POST",
-    body: formData, // NE PAS fixer Content-Type : le navigateur ajoute la boundary.
+    headers: entetes(), // jeton enseignant si présent ; PAS de Content-Type (boundary auto)
+    body: formData,
   });
   return traiterReponse(response);
 }

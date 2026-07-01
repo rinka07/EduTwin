@@ -98,3 +98,71 @@ class ChatBody(BaseModel):
 class ChatResponse(BaseModel):
     reponse: str
     timestamp: str  # ISO 8601
+
+
+# ---------------------------------------------------------------------------
+# Authentification enseignant
+# ---------------------------------------------------------------------------
+class LoginBody(BaseModel):
+    """Body de POST /api/teacher/login."""
+    mot_de_passe: str
+
+
+class TokenResponse(BaseModel):
+    token: str
+
+
+# ---------------------------------------------------------------------------
+# Historique des séances (côté enseignant)
+# ---------------------------------------------------------------------------
+class SessionResume(BaseModel):
+    session_id: str
+    titre_tp: str
+    code_acces: str
+    nb_taches: int
+    nb_eleves: int
+    created_at: str
+
+
+class SessionsListResponse(BaseModel):
+    sessions: List[SessionResume]
+
+
+# ---------------------------------------------------------------------------
+# Édition des tâches (côté enseignant)
+# ---------------------------------------------------------------------------
+class TacheComplete(BaseModel):
+    id: str
+    titre: str
+    consigne: str
+    ordre: int
+
+
+class TachesListResponse(BaseModel):
+    taches: List[TacheComplete]
+
+
+class TacheCreateBody(BaseModel):
+    titre: str
+    consigne: str = ""
+
+
+class TacheUpdateBody(BaseModel):
+    titre: Optional[str] = None
+    consigne: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Restauration de la session élève (après actualisation de la page)
+# ---------------------------------------------------------------------------
+class ProgressionItem(BaseModel):
+    tache_id: str
+    statut: str
+
+
+class EleveCompletResponse(BaseModel):
+    eleve_id: str
+    nom: str
+    session_id: str
+    taches: List[TacheEleve]
+    progression: List[ProgressionItem]

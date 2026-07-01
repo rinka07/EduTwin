@@ -11,7 +11,10 @@ WebSocket vers les clients connectés au dashboard de la session.
 from fastapi import APIRouter, HTTPException
 
 import database as db
-from schemas import EleveJoinBody, EleveJoinResponse, TachePatchBody, OkResponse
+from schemas import (
+    EleveJoinBody, EleveJoinResponse, TachePatchBody, OkResponse,
+    EleveCompletResponse,
+)
 from websocket_manager import broadcast
 
 # Deux préfixes distincts : /api/session/... pour join, /api/eleve/... pour patch.
@@ -43,6 +46,15 @@ async def join(session_id: str, body: EleveJoinBody) -> dict:
     })
 
     return resultat
+
+
+@router_eleve.get("/{eleve_id}", response_model=EleveCompletResponse)
+def infos_eleve(eleve_id: str) -> dict:
+    """Restaure la session d'un élève (tâches + progression) après actualisation."""
+    complet = db.get_eleve_complet(eleve_id)
+    if not complet:
+        raise HTTPException(status_code=404, detail="eleve introuvable")
+    return complet
 
 
 @router_eleve.patch("/{eleve_id}/tache/{tache_id}", response_model=OkResponse)

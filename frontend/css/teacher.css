@@ -183,3 +183,56 @@
   .kpi-grid { grid-template-columns: 1fr; }
   .access-code__value { font-size: 2rem; letter-spacing: .12em; }
 }
+
+/* ======================================================================
+   Écran de connexion enseignant (mêmes règles que l'espace élève)
+   ====================================================================== */
+.join-screen {
+  min-height: calc(100dvh - 64px);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--sp-6);
+}
+.join-card { width: 100%; max-width: 440px; }
+
+/* ======================================================================
+   Historique des séances
+   ====================================================================== */
+.histo-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.histo-item {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  width: 100%; text-align: left; cursor: pointer;
+  padding: var(--sp-3); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); background: var(--color-surface);
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+.histo-item:hover { border-color: var(--color-secondary); background: var(--color-secondary-050); }
+.histo-item:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.histo-item.is-current { border-color: var(--color-primary); background: var(--color-muted); }
+.histo-item__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.histo-item__titre {
+  font-weight: var(--fw-semibold); color: var(--color-foreground);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.histo-item__meta { font-size: var(--fs-xs); color: var(--color-muted-fg); }
+.histo-item__meta .mono { font-family: var(--font-mono); color: var(--color-primary); font-weight: var(--fw-semibold); }
+.histo-item__date { font-size: var(--fs-xs); color: var(--color-muted-fg); white-space: nowrap; }
+
+/* ======================================================================
+   Éditeur de tâches
+   ====================================================================== */
+.taches-editor { display: flex; flex-direction: column; gap: var(--sp-3); }
+.tache-edit {
+  display: flex; gap: var(--sp-3); align-items: flex-start;
+  padding: var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-background);
+  transition: box-shadow var(--transition), border-color var(--transition);
+}
+.tache-edit.is-saved { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-050); }
+.tache-edit__num {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: var(--radius-full);
+  display: grid; place-items: center; font-size: var(--fs-xs); font-weight: var(--fw-bold);
+  background: var(--color-primary); color: #fff;
+}
+.tache-edit__fields { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.tache-edit__consigne { font-family: var(--font-mono); font-size: var(--fs-sm); resize: vertical; }
+.tache-edit__actions { display: flex; gap: var(--sp-2); }

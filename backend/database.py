@@ -166,10 +166,143 @@ def add_taches(session_id: str, taches: list[dict]) -> list[dict]:
                 (tache_id, session_id, ordre, titre, consigne),
             )
             inserees.append({"id": tache_id, "titre": titre, "consigne": consigne})
+        # nb_taches reflète le nombre réel de tâches indexées.
+        conn.execute(
+            "UPDATE sessions SET nb_taches = ? WHERE session_id = ?",
+            (len(inserees), session_id),
+        )
         conn.commit()
     finally:
         conn.close()
     return inserees
+
+
+def get_taches_full(session_id: str) -> list[dict]:
+    """Retourne les tâches d'une session avec leur ordre : [{id,titre,consigne,ordre}]."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, titre, consigne, ordre FROM taches "
+            "WHERE session_id = ? ORDER BY ordre ASC",
+            (session_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def _recompter_nb_taches(conn: sqlite3.Connection, session_id: str) -> None:
+    """Recale sessions.nb_taches sur le nombre réel de tâches (helper interne)."""
+    n = conn.execute(
+        "SELECT COUNT(*) AS n FROM taches WHERE session_id = ?", (session_id,)
+    ).fetchone()["n"]
+    conn.execute("UPDATE sessions SET nb_taches = ? WHERE session_id = ?", (n, session_id))
+
+
+def add_single_tache(session_id: str, titre: str, consigne: str = "") -> dict:
+    """Ajoute une tâche en fin de liste et renvoie {id,titre,consigne,ordre}."""
+    tache_id = _uuid_court()
+    conn = get_conn()
+    try:
+        ordre_row = conn.execute(
+            "SELECT COALESCE(MAX(ordre), -1) + 1 AS o FROM taches WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        ordre = ordre_row["o"]
+        conn.execute(
+            "INSERT INTO taches (id, session_id, ordre, titre, consigne) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (tache_id, session_id, ordre, titre, consigne),
+        )
+        _recompter_nb_taches(conn, session_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"id": tache_id, "titre": titre, "consigne": consigne, "ordre": ordre}
+
+
+def update_tache(session_id: str, tache_id: str,
+                 titre: Optional[str], consigne: Optional[str]) -> bool:
+    """Modifie le titre et/ou la consigne d'une tâche. Retourne False si introuvable."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT titre, consigne FROM taches WHERE id = ? AND session_id = ?",
+            (tache_id, session_id),
+        ).fetchone()
+        if not row:
+            return False
+        nouveau_titre = titre if titre is not None else row["titre"]
+        nouvelle_consigne = consigne if consigne is not None else row["consigne"]
+        conn.execute(
+            "UPDATE taches SET titre = ?, consigne = ? WHERE id = ? AND session_id = ?",
+            (nouveau_titre, nouvelle_consigne, tache_id, session_id),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def delete_tache(session_id: str, tache_id: str) -> bool:
+    """Supprime une tâche + la progression associée. Retourne False si introuvable."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM taches WHERE id = ? AND session_id = ?",
+            (tache_id, session_id),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute("DELETE FROM taches WHERE id = ? AND session_id = ?",
+                     (tache_id, session_id))
+        conn.execute("DELETE FROM eleve_taches WHERE tache_id = ?", (tache_id,))
+        _recompter_nb_taches(conn, session_id)
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def list_sessions() -> list[dict]:
+    """Retourne l'historique des séances (récentes d'abord) avec le nb d'élèves."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT s.session_id, s.titre_tp, s.code_acces, s.nb_taches, s.created_at, "
+            "  (SELECT COUNT(*) FROM eleves e WHERE e.session_id = s.session_id) AS nb_eleves "
+            "FROM sessions s ORDER BY s.created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_eleve_complet(eleve_id: str) -> Optional[dict]:
+    """Retourne l'élève avec ses tâches et sa progression (pour la restauration).
+
+    Format : {eleve_id, nom, session_id, taches:[{id,titre,consigne}],
+              progression:[{tache_id,statut}]} ou None si introuvable.
+    """
+    eleve = get_eleve(eleve_id)
+    if not eleve:
+        return None
+    taches = get_taches(eleve["session_id"])
+    conn = get_conn()
+    try:
+        prog = conn.execute(
+            "SELECT tache_id, statut FROM eleve_taches WHERE eleve_id = ?",
+            (eleve_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        "eleve_id": eleve_id,
+        "nom": eleve["nom"],
+        "session_id": eleve["session_id"],
+        "taches": taches,
+        "progression": [dict(r) for r in prog],
+    }
 
 
 def add_chunks(session_id: str, chunks: list[str]) -> None:
