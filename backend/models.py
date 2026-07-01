@@ -40,14 +40,47 @@ CREATE TABLE IF NOT EXISTS taches (
   consigne   TEXT
 );
 
+-- Poste : une machine partagée par 1 à 3 élèves (unité de connexion).
+-- Ajout EXTENSIONS (voir EXTENSIONS.md) : le contrat figé reste inchangé.
+CREATE TABLE IF NOT EXISTS postes (
+  poste_id   TEXT PRIMARY KEY,
+  session_id TEXT,
+  numero     INTEGER,
+  classe     TEXT,
+  joined_at  TEXT,
+  last_seen  TEXT
+);
+
 -- Eleve : un élève ayant rejoint une session.
+-- Colonnes `poste_id` / `classe` ajoutées par ALTER TABLE défensif (init_db) pour
+-- rester compatible avec les bases existantes ; nul en mode solo historique.
 CREATE TABLE IF NOT EXISTS eleves (
   eleve_id   TEXT PRIMARY KEY,
   session_id TEXT,
   nom        TEXT,
   statut     TEXT,
   joined_at  TEXT,
-  last_seen  TEXT
+  last_seen  TEXT,
+  poste_id   TEXT,
+  classe     TEXT
+);
+
+-- Assignation : quel élève est responsable de quelle étape SUR un poste donné.
+CREATE TABLE IF NOT EXISTS assignations (
+  poste_id  TEXT,
+  tache_id  TEXT,
+  eleve_id  TEXT,
+  PRIMARY KEY (poste_id, tache_id)
+);
+
+-- Ressource : fichier source complémentaire déposé par l'enseignant pour
+-- enrichir le contexte de l'IA (injecté dans les chunks RAG).
+CREATE TABLE IF NOT EXISTS ressources (
+  ressource_id   TEXT PRIMARY KEY,
+  session_id     TEXT,
+  nom            TEXT,
+  chemin_fichier TEXT,
+  created_at     TEXT
 );
 
 -- ProgressionTache : statut d'une tâche pour un élève donné.

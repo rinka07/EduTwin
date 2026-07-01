@@ -48,9 +48,15 @@ def historique_sessions() -> dict:
     return {"sessions": db.list_sessions()}
 
 
-def _verifier_session(session_id: str) -> None:
-    if not db.get_session(session_id):
+# Nombre minimum d'étapes imposé pour un TP (aligné sur session.NB_TACHES_MIN).
+NB_TACHES_MIN = 3
+
+
+def _verifier_session(session_id: str) -> dict:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="session introuvable")
+    return session
 
 
 @router_taches.get("/{session_id}/taches", response_model=TachesListResponse)
@@ -62,8 +68,19 @@ def lister_taches(session_id: str) -> dict:
 
 @router_taches.post("/{session_id}/taches", response_model=TacheComplete)
 async def ajouter_tache(session_id: str, body: TacheCreateBody) -> dict:
-    """Ajoute une tâche à la session et notifie le dashboard (total modifié)."""
-    _verifier_session(session_id)
+    """Ajoute une tâche à la session et notifie le dashboard (total modifié).
+
+    Contrainte : on ne dépasse pas le nombre de tâches défini pour le TP
+    (`sessions.nb_taches`) — « pas plus » d'étapes que prévu.
+    """
+    session = _verifier_session(session_id)
+    actuel = len(db.get_taches_full(session_id))
+    cible = session.get("nb_taches") or 0
+    if cible and actuel >= cible:
+        raise HTTPException(
+            status_code=400,
+            detail=f"nombre d'étapes défini atteint ({cible}) : suppression requise avant ajout",
+        )
     tache = db.add_single_tache(session_id, body.titre.strip(), body.consigne)
     await broadcast(session_id, {"type": "dashboard", "data": db.build_dashboard(session_id)})
     return tache
@@ -82,8 +99,16 @@ def modifier_tache(session_id: str, tache_id: str, body: TacheUpdateBody) -> dic
 
 @router_taches.delete("/{session_id}/taches/{tache_id}", response_model=OkResponse)
 async def supprimer_tache(session_id: str, tache_id: str) -> dict:
-    """Supprime une tâche et notifie le dashboard (total modifié)."""
+    """Supprime une tâche et notifie le dashboard.
+
+    Contrainte : un TP conserve au moins NB_TACHES_MIN étapes — « pas moins ».
+    """
     _verifier_session(session_id)
+    if len(db.get_taches_full(session_id)) <= NB_TACHES_MIN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"un TP doit conserver au moins {NB_TACHES_MIN} étapes",
+        )
     if not db.delete_tache(session_id, tache_id):
         raise HTTPException(status_code=404, detail="tâche introuvable")
     await broadcast(session_id, {"type": "dashboard", "data": db.build_dashboard(session_id)})

@@ -9,9 +9,10 @@
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/student.css">
+  <script defer src="js/i18n.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Aller au contenu principal</a>
+  <a class="skip-link" href="#main" data-i18n="nav.skip">Aller au contenu principal</a>
 
   <header class="app-header">
     <div class="app-header__inner">
@@ -21,72 +22,100 @@
         </span>
         <span>
           <span class="brand__name">EduTwin</span>
-          <span class="brand__sub">Assistant de TP · LAN · Hors-ligne</span>
+          <span class="brand__sub" data-i18n="brand.sub">Assistant de TP · LAN · Hors-ligne</span>
         </span>
       </a>
       <span class="app-header__spacer"></span>
-      <span class="app-header__meta" id="header-eleve"></span>
+      <span class="app-header__meta" id="header-poste"></span>
+      <label class="lang-picker">
+        <span class="sr-only" data-i18n="lang.label">Langue</span>
+        <select class="lang-select" aria-label="Langue / Language">
+          <option value="fr">FR</option>
+          <option value="en">EN</option>
+        </select>
+      </label>
       <button class="btn btn--sm btn--ghost-light hidden" type="button" id="btn-quitter">
         <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-        <span>Quitter</span>
+        <span data-i18n="student.quit">Quitter</span>
       </button>
     </div>
   </header>
 
   <main id="main">
-    <!-- ================= ÉCRAN DE CONNEXION ================= -->
+    <!-- ================= ÉCRAN DE CONNEXION (POSTE) ================= -->
     <section class="join-screen" id="ecran-join">
       <div class="card join-card" aria-labelledby="titre-join">
         <div class="card__header">
           <span class="card__icon" aria-hidden="true" style="background:var(--color-success-050);color:var(--color-accent);">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
           </span>
-          <h1 class="card__title" id="titre-join" style="font-size:var(--fs-xl);">Rejoindre la session</h1>
+          <h1 class="card__title" id="titre-join" style="font-size:var(--fs-xl);" data-i18n="student.join.title">Rejoindre depuis ce poste</h1>
         </div>
+        <p class="text-sm text-muted mb-4" data-i18n="student.join.intro">Un poste peut être partagé par 1 à 3 élèves. Indiquez qui travaille sur cette machine.</p>
 
         <form id="form-join" novalidate>
           <div class="field">
-            <label class="field__label" for="nom_eleve">Votre nom <span class="field__req" aria-hidden="true">*</span></label>
-            <input class="input" type="text" id="nom_eleve" name="nom_eleve" required
-                   placeholder="Ex. Amina Nkolo" autocomplete="name">
-            <p class="field__error" id="err-nom" aria-live="polite"></p>
-          </div>
-          <div class="field">
-            <label class="field__label" for="code_acces">Code d'accès <span class="field__req" aria-hidden="true">*</span></label>
+            <label class="field__label" for="code_acces"><span data-i18n="student.field.code">Code d'accès</span> <span class="field__req" aria-hidden="true">*</span></label>
             <input class="input input--mono" type="text" id="code_acces" name="code_acces" required
                    placeholder="Ex. 4F7K2P" autocomplete="off" autocapitalize="characters"
                    maxlength="12" style="letter-spacing:.15em;text-transform:uppercase;">
-            <p class="field__hint">Communiqué par votre enseignant.</p>
+            <p class="field__hint" data-i18n="student.field.code.hint">Communiqué par votre enseignant.</p>
             <p class="field__error" id="err-code" aria-live="polite"></p>
           </div>
           <div class="field">
-            <label class="field__label" for="session_id">Identifiant de session <span class="field__req" aria-hidden="true">*</span></label>
+            <label class="field__label" for="session_id"><span data-i18n="student.field.session">Identifiant de session</span> <span class="field__req" aria-hidden="true">*</span></label>
             <input class="input input--mono" type="text" id="session_id" name="session_id" required
                    placeholder="Collez l'identifiant fourni" autocomplete="off">
-            <p class="field__hint">Se remplit automatiquement via le lien de l'enseignant (?session=…).</p>
+            <p class="field__hint" data-i18n="student.field.session.hint">Se remplit automatiquement via le lien de l'enseignant (?session=…).</p>
             <p class="field__error" id="err-session" aria-live="polite"></p>
           </div>
+          <div class="flex gap-4">
+            <div class="field flex-1">
+              <label class="field__label" for="classe" data-i18n="student.field.classe">Classe (optionnel)</label>
+              <input class="input" type="text" id="classe" name="classe" placeholder="Ex. 2nde C" autocomplete="off">
+            </div>
+            <div class="field flex-1">
+              <label class="field__label" for="numero" data-i18n="student.field.numero">N° de poste (optionnel)</label>
+              <input class="input input--mono" type="number" id="numero" name="numero" min="1" max="200" placeholder="Auto">
+            </div>
+          </div>
+
+          <fieldset class="field eleves-fieldset">
+            <legend class="field__label" data-i18n="student.eleves.legend">Élèves sur ce poste</legend>
+            <div id="eleves-fields"><!-- rempli par student.js --></div>
+            <button class="btn btn--sm btn--ghost mt-2" type="button" id="btn-add-eleve">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              <span data-i18n="student.eleve.add">Ajouter un élève</span>
+            </button>
+            <p class="field__error" id="err-eleves" aria-live="polite"></p>
+          </fieldset>
+
           <p class="field__error" id="err-join" aria-live="polite"></p>
           <button class="btn btn--accent btn--block mt-4" type="submit" id="btn-join">
-            <span class="btn__label">Rejoindre</span>
+            <span class="btn__label" data-i18n="student.join.submit">Rejoindre</span>
           </button>
         </form>
       </div>
     </section>
 
-    <!-- ================= VUE TP (masquée avant connexion) ================= -->
+    <!-- ================= VUE TP ================= -->
     <section class="container hidden" id="ecran-tp">
       <div class="page-title">
-        <h1 id="tp-titre">Mon TP</h1>
+        <h1 data-i18n="student.tp.title">Mon TP</h1>
       </div>
-      <p class="page-subtitle" id="tp-sous-titre">Suivez les tâches et posez vos questions à l'assistant.</p>
+      <p class="page-subtitle" id="tp-sous-titre" data-i18n="student.tp.subtitle">Mettez à jour votre avancement et posez vos questions à l'assistant.</p>
 
       <div class="note mb-4">
         <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-top:2px;"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-        <span>EduTwin ne remplace pas votre éditeur de code : gardez votre IDE ouvert à côté et codez-y. Ici, mettez à jour votre avancement et demandez des indices.</span>
+        <span data-i18n="student.note">EduTwin ne remplace pas votre éditeur de code : gardez votre IDE ouvert à côté et codez-y. Ici, mettez à jour votre avancement et demandez des indices.</span>
       </div>
 
-      <!-- Progression globale de l'élève -->
+      <!-- Sélecteur d'élève actif (poste partagé) -->
+      <div class="card mb-4" id="switcher-card">
+        <div class="eleve-switcher" role="group" aria-label="Élève actif" id="eleve-switcher"><!-- rempli par student.js --></div>
+      </div>
+
+      <!-- Progression globale de l'élève actif -->
       <div class="card mb-4">
         <div class="student-progress">
           <span class="student-progress__label" id="progress-label">0 / 0</span>
@@ -96,35 +125,29 @@
       </div>
 
       <div class="student-layout">
-        <!-- Tâches -->
         <div>
-          <h2 class="mb-2" style="font-size:var(--fs-lg);">Tâches</h2>
+          <h2 class="mb-2" style="font-size:var(--fs-lg);" data-i18n="student.tasks">Tâches</h2>
           <div class="task-list" id="task-list"><!-- rempli par student.js --></div>
         </div>
 
-        <!-- Chat IA -->
         <div class="chat-panel" aria-labelledby="chat-titre">
           <div class="chat-panel__header">
             <span class="card__icon" aria-hidden="true">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
             </span>
             <div>
-              <div class="chat-panel__title" id="chat-titre">Assistant EduTwin</div>
-              <div class="chat-panel__sub">Des indices, jamais la solution toute faite.</div>
+              <div class="chat-panel__title" id="chat-titre" data-i18n="chat.title">Assistant EduTwin</div>
+              <div class="chat-panel__sub" data-i18n="chat.sub">Des indices, jamais la solution toute faite.</div>
             </div>
           </div>
 
-          <div class="chat-log" id="chat-log" aria-live="polite" aria-label="Conversation avec l'assistant">
-            <div class="chat-bubble chat-bubble--ai">
-              Bonjour ! Pose-moi une question sur une tâche et je te guiderai pas à pas.
-            </div>
-          </div>
+          <div class="chat-log" id="chat-log" aria-live="polite" aria-label="Conversation avec l'assistant"></div>
 
           <form class="chat-form" id="chat-form">
-            <label class="sr-only" for="question">Votre question</label>
+            <label class="sr-only" for="question" data-i18n="chat.placeholder">Votre question</label>
             <textarea class="textarea" id="question" name="question" rows="1"
-                      placeholder="Posez votre question…" required></textarea>
-            <button class="btn btn--primary btn--icon" type="submit" id="btn-chat" aria-label="Envoyer la question">
+                      data-i18n-attr="placeholder:chat.placeholder" placeholder="Posez votre question…" required></textarea>
+            <button class="btn btn--primary btn--icon" type="submit" id="btn-chat" data-i18n-attr="aria-label:chat.send" aria-label="Envoyer la question">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>
             </button>
           </form>

@@ -55,10 +55,22 @@ def _generer_code_acces() -> str:
 # Initialisation du schéma (CONTRAT §4)
 # ---------------------------------------------------------------------------
 def init_db() -> None:
-    """Crée les tables si elles n'existent pas encore (schéma dans models.py)."""
+    """Crée les tables si elles n'existent pas encore (schéma dans models.py).
+
+    Applique aussi des migrations additives défensives (ALTER TABLE) pour les
+    bases créées avant l'ajout des colonnes `poste_id` / `classe` sur `eleves`.
+    """
     conn = get_conn()
     try:
         conn.executescript(models.SCHEMA)
+        # Migrations idempotentes : ajoute les colonnes manquantes sans erreur
+        # si elles existent déjà (bases antérieures aux EXTENSIONS).
+        colonnes_eleves = {
+            row["name"] for row in conn.execute("PRAGMA table_info(eleves)")
+        }
+        for colonne in ("poste_id", "classe"):
+            if colonne not in colonnes_eleves:
+                conn.execute(f"ALTER TABLE eleves ADD COLUMN {colonne} TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -214,7 +226,9 @@ def add_single_tache(session_id: str, titre: str, consigne: str = "") -> dict:
             "VALUES (?, ?, ?, ?, ?)",
             (tache_id, session_id, ordre, titre, consigne),
         )
-        _recompter_nb_taches(conn, session_id)
+        # `sessions.nb_taches` reste le NOMBRE CIBLE défini à la création : on ne
+        # le recale pas ici (la contrainte "pas plus/pas moins" est vérifiée dans
+        # les routes enseignant).
         conn.commit()
     finally:
         conn.close()
@@ -257,7 +271,8 @@ def delete_tache(session_id: str, tache_id: str) -> bool:
         conn.execute("DELETE FROM taches WHERE id = ? AND session_id = ?",
                      (tache_id, session_id))
         conn.execute("DELETE FROM eleve_taches WHERE tache_id = ?", (tache_id,))
-        _recompter_nb_taches(conn, session_id)
+        conn.execute("DELETE FROM assignations WHERE tache_id = ?", (tache_id,))
+        # nb_taches = cible fixe (voir add_single_tache) : pas de recalcul.
         conn.commit()
         return True
     finally:
@@ -320,6 +335,29 @@ def add_chunks(session_id: str, chunks: list[str]) -> None:
         conn.close()
 
 
+def append_chunks(session_id: str, chunks: list[str]) -> None:
+    """Ajoute des chunks RAG à la suite des existants (sans les remplacer).
+
+    Utilisé pour injecter les ressources complémentaires dans le contexte IA.
+    """
+    if not chunks:
+        return
+    conn = get_conn()
+    try:
+        base = conn.execute(
+            "SELECT COALESCE(MAX(ordre), -1) + 1 AS o FROM chunks WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()["o"]
+        for i, contenu in enumerate(chunks):
+            conn.execute(
+                "INSERT INTO chunks (session_id, ordre, contenu) VALUES (?, ?, ?)",
+                (session_id, base + i, contenu),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_taches(session_id: str) -> list[dict]:
     """Retourne les tâches d'une session, triées par ordre.
 
@@ -363,10 +401,13 @@ def get_chunks_and_taches(session_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Élèves & progression
 # ---------------------------------------------------------------------------
-def join_eleve(session_id: str, nom_eleve: str) -> dict:
+def join_eleve(session_id: str, nom_eleve: str,
+               poste_id: Optional[str] = None, classe: Optional[str] = None) -> dict:
     """Inscrit un élève à la session et initialise sa progression.
 
     Les tâches n'ont PAS de statut par défaut (absence = non complétée).
+    `poste_id`/`classe` sont optionnels : renseignés via l'inscription par poste
+    (EXTENSIONS), nuls pour l'inscription solo historique.
     Retourne {"eleve_id", "taches": [{"id","titre","consigne"}, ...]}.
     """
     eleve_id = _uuid_court()
@@ -375,14 +416,203 @@ def join_eleve(session_id: str, nom_eleve: str) -> dict:
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO eleves (eleve_id, session_id, nom, statut, joined_at, last_seen) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (eleve_id, session_id, nom_eleve, "actif", now, now),
+            "INSERT INTO eleves "
+            "(eleve_id, session_id, nom, statut, joined_at, last_seen, poste_id, classe) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (eleve_id, session_id, nom_eleve, "actif", now, now, poste_id, classe),
         )
         conn.commit()
     finally:
         conn.close()
     return {"eleve_id": eleve_id, "taches": taches}
+
+
+# ---------------------------------------------------------------------------
+# Postes (EXTENSIONS) : une machine partagée par 1 à 3 élèves.
+# ---------------------------------------------------------------------------
+def create_poste(session_id: str, numero: Optional[int], classe: Optional[str]) -> dict:
+    """Crée un poste pour la session et renvoie {poste_id, numero, classe}.
+
+    `numero` est auto-attribué (max de la session + 1) s'il n'est pas fourni.
+    """
+    poste_id = _uuid_court()
+    now = _now_iso()
+    conn = get_conn()
+    try:
+        if numero is None:
+            numero = conn.execute(
+                "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM postes WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()["n"]
+        conn.execute(
+            "INSERT INTO postes (poste_id, session_id, numero, classe, joined_at, last_seen) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (poste_id, session_id, numero, classe, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"poste_id": poste_id, "numero": numero, "classe": classe}
+
+
+def join_eleves_poste(session_id: str, poste_id: str, noms: list[str],
+                      classe: Optional[str] = None) -> list[dict]:
+    """Inscrit tous les élèves d'un poste et renvoie [{eleve_id, nom}]."""
+    resultat: list[dict] = []
+    for nom in noms:
+        nom = (nom or "").strip()
+        if not nom:
+            continue
+        r = join_eleve(session_id, nom, poste_id=poste_id, classe=classe)
+        resultat.append({"eleve_id": r["eleve_id"], "nom": nom})
+    return resultat
+
+
+def get_poste(poste_id: str) -> Optional[dict]:
+    """Retourne le poste (dict) ou None."""
+    if not poste_id:
+        return None
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM postes WHERE poste_id = ?", (poste_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def touch_poste(poste_id: str) -> None:
+    """Rafraîchit le `last_seen` du poste (activité récente)."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE postes SET last_seen = ? WHERE poste_id = ?",
+            (_now_iso(), poste_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_assignation(poste_id: str, tache_id: str, eleve_id: str) -> None:
+    """Assigne (ou réassigne) une étape à un élève sur un poste donné."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO assignations (poste_id, tache_id, eleve_id) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(poste_id, tache_id) DO UPDATE SET eleve_id = excluded.eleve_id",
+            (poste_id, tache_id, eleve_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_assignations(poste_id: str) -> list[dict]:
+    """Retourne les assignations d'un poste : [{tache_id, eleve_id}]."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT tache_id, eleve_id FROM assignations WHERE poste_id = ?",
+            (poste_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_poste_complet(poste_id: str) -> Optional[dict]:
+    """Restaure l'intégralité d'un poste (reprise après déconnexion).
+
+    Format : {poste_id, session_id, numero, classe, taches:[...],
+              eleves:[{eleve_id, nom, progression:[{tache_id,statut}]}],
+              assignations:[{tache_id, eleve_id}]}.
+    """
+    conn = get_conn()
+    try:
+        poste = conn.execute(
+            "SELECT * FROM postes WHERE poste_id = ?", (poste_id,)
+        ).fetchone()
+        if not poste:
+            return None
+        poste = dict(poste)
+        eleves_rows = conn.execute(
+            "SELECT eleve_id, nom FROM eleves WHERE poste_id = ? ORDER BY joined_at ASC",
+            (poste_id,),
+        ).fetchall()
+        eleves = []
+        for e in eleves_rows:
+            prog = conn.execute(
+                "SELECT tache_id, statut FROM eleve_taches WHERE eleve_id = ?",
+                (e["eleve_id"],),
+            ).fetchall()
+            eleves.append({
+                "eleve_id": e["eleve_id"],
+                "nom": e["nom"],
+                "progression": [dict(p) for p in prog],
+            })
+        assignations = conn.execute(
+            "SELECT tache_id, eleve_id FROM assignations WHERE poste_id = ?",
+            (poste_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        "poste_id": poste_id,
+        "session_id": poste["session_id"],
+        "numero": poste["numero"],
+        "classe": poste["classe"],
+        "taches": get_taches(poste["session_id"]),
+        "eleves": eleves,
+        "assignations": [dict(a) for a in assignations],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Ressources complémentaires (EXTENSIONS) : contexte supplémentaire pour l'IA.
+# ---------------------------------------------------------------------------
+def add_ressource(session_id: str, nom: str, chemin_fichier: str) -> str:
+    """Enregistre une ressource complémentaire et renvoie son ressource_id."""
+    ressource_id = _uuid_court()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO ressources (ressource_id, session_id, nom, chemin_fichier, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (ressource_id, session_id, nom, chemin_fichier, _now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return ressource_id
+
+
+def list_ressources(session_id: str) -> list[dict]:
+    """Retourne les ressources déposées pour une session (récentes d'abord)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT ressource_id, nom, created_at FROM ressources "
+            "WHERE session_id = ? ORDER BY created_at DESC",
+            (session_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_ressource(ressource_id: str) -> Optional[dict]:
+    """Retourne une ressource (dict) ou None (pour le téléchargement)."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM ressources WHERE ressource_id = ?", (ressource_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 
 def get_eleve(eleve_id: str) -> Optional[dict]:
@@ -410,14 +640,26 @@ def touch_eleve(eleve_id: str) -> None:
         conn.close()
 
 
+class TacheVerrouillee(Exception):
+    """Levée quand on tente de rouvrir une tâche déjà marquée 'complete'."""
+
+
 def patch_tache(eleve_id: str, tache_id: str, statut: str) -> None:
     """Met à jour (ou insère) le statut d'une tâche pour un élève.
 
     Rafraîchit aussi le `last_seen` de l'élève (c'est une activité).
+    Verrouillage : une tâche déjà 'complete' ne peut plus repasser à
+    'en_cours' ou 'bloque' (statut final). Lève `TacheVerrouillee` dans ce cas.
     """
     now = _now_iso()
     conn = get_conn()
     try:
+        courant = conn.execute(
+            "SELECT statut FROM eleve_taches WHERE eleve_id = ? AND tache_id = ?",
+            (eleve_id, tache_id),
+        ).fetchone()
+        if courant and courant["statut"] == "complete" and statut != "complete":
+            raise TacheVerrouillee()
         conn.execute(
             "INSERT INTO eleve_taches (eleve_id, tache_id, statut, date_maj) "
             "VALUES (?, ?, ?, ?) "
@@ -505,8 +747,10 @@ def build_dashboard(session_id: str) -> dict:
     conn = get_conn()
     try:
         eleves = conn.execute(
-            "SELECT eleve_id, nom, last_seen FROM eleves "
-            "WHERE session_id = ? ORDER BY joined_at ASC",
+            "SELECT e.eleve_id, e.nom, e.last_seen, e.classe, "
+            "       p.numero AS numero_poste, e.poste_id "
+            "FROM eleves e LEFT JOIN postes p ON p.poste_id = e.poste_id "
+            "WHERE e.session_id = ? ORDER BY p.numero ASC, e.joined_at ASC",
             (session_id,),
         ).fetchall()
 
@@ -523,6 +767,13 @@ def build_dashboard(session_id: str) -> dict:
                 "WHERE eleve_id = ? AND statut = 'bloque'",
                 (eleve_id,),
             ).fetchone()["n"]
+            # Étape en cours (la plus récente marquée 'en_cours'), pour le suivi fin.
+            etape = conn.execute(
+                "SELECT t.titre FROM eleve_taches et JOIN taches t ON t.id = et.tache_id "
+                "WHERE et.eleve_id = ? AND et.statut = 'en_cours' "
+                "ORDER BY et.date_maj DESC LIMIT 1",
+                (eleve_id,),
+            ).fetchone()
 
             resultat.append({
                 "eleve_id": eleve_id,
@@ -530,7 +781,39 @@ def build_dashboard(session_id: str) -> dict:
                 "taches_completes": completes,
                 "taches_total": taches_total,
                 "statut": _statut_eleve(dict(e), bloquees, e["last_seen"]),
+                # Champs additifs (EXTENSIONS) : désambiguïsation des homonymes.
+                "numero_poste": e["numero_poste"],
+                "classe": e["classe"],
+                "label": _label_eleve(e["nom"], e["classe"], e["numero_poste"], eleve_id),
+                "etape_en_cours": etape["titre"] if etape else None,
             })
+
+        # Désambiguïsation finale : si deux élèves partagent le MÊME label (mêmes
+        # nom, classe et poste — homonymes sur une même machine), on ajoute un
+        # identifiant court pour éviter toute confusion (suivi / notifications).
+        vus: dict[str, int] = {}
+        for r in resultat:
+            vus[r["label"]] = vus.get(r["label"], 0) + 1
+        for r in resultat:
+            if vus[r["label"]] > 1:
+                r["label"] = f"{r['label']} · #{r['eleve_id'][:4]}"
         return {"eleves": resultat}
     finally:
         conn.close()
+
+
+def _label_eleve(nom: str, classe: Optional[str], numero_poste: Optional[int],
+                 eleve_id: str) -> str:
+    """Libellé désambiguïsé d'un élève (évite la confusion entre homonymes).
+
+    Ex. « Amina N. · 2nde C · P3 ». Retombe sur un identifiant court si aucune
+    info de poste/classe n'est disponible (mode solo).
+    """
+    parts = [nom or "Élève"]
+    if classe:
+        parts.append(str(classe))
+    if numero_poste is not None:
+        parts.append(f"P{numero_poste}")
+    if not classe and numero_poste is None:
+        parts.append(f"#{eleve_id[:4]}")
+    return " · ".join(parts)

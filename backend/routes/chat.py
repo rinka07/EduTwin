@@ -59,12 +59,17 @@ async def chat(body: ChatBody) -> dict:
     db.save_chat(body.session_id, body.eleve_id, body.question, reponse, timestamp)
     db.touch_eleve(body.eleve_id)
 
+    # Contexte additif (EXTENSIONS) : poste/classe pour des notifications précises.
+    poste = db.get_poste(eleve.get("poste_id"))
+
     # Diffusion WebSocket : évènement chat PUIS snapshot dashboard.
     await broadcast(body.session_id, {
         "type": "chat",
         "data": {
             "eleve_id": body.eleve_id,
             "nom": eleve["nom"],
+            "classe": eleve.get("classe"),
+            "numero_poste": poste["numero"] if poste else None,
             "question": body.question,
             "reponse": reponse,
             "timestamp": timestamp,

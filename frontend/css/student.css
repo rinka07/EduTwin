@@ -147,6 +147,68 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* --- Connexion : champs d'élèves dynamiques ---------------------------- */
+.eleves-fieldset { border: none; padding: 0; margin: var(--sp-4) 0 0; }
+.eleve-row { display: flex; gap: var(--sp-2); align-items: center; margin-bottom: var(--sp-2); }
+.eleve-row .eleve-nom { flex: 1; }
+.eleve-row .eleve-remove { flex-shrink: 0; min-width: 40px; }
+
+/* --- Sélecteur d'élève actif (poste partagé) --------------------------- */
+.eleve-switcher { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.eleve-switcher__label { font-size: var(--fs-sm); color: var(--color-muted-fg); font-weight: var(--fw-medium); }
+.eleve-tab {
+  min-height: 40px;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.eleve-tab:hover { background: var(--color-muted); }
+.eleve-tab.is-active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.eleve-tab:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+
+/* --- Tâche : mise en avant / assignation / minuteur -------------------- */
+.task--mine { border-left-color: var(--color-secondary); background: var(--color-secondary-050); }
+.task--other { opacity: .82; }
+.task__mine { margin-left: auto; }
+.task__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.task__assign { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.task__assign-label { font-size: var(--fs-xs); color: var(--color-muted-fg); font-weight: var(--fw-medium); }
+.task__assign-select { width: auto; min-height: 36px; min-width: 140px; font-size: var(--fs-sm); }
+.task__hint { font-size: var(--fs-xs); color: var(--color-muted-fg); margin-top: var(--sp-2); }
+
+.task-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-fg);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-full);
+  background: var(--color-muted);
+}
+.task-timer.is-running { color: #1d4fd0; background: var(--color-info-050); }
+.task-timer.is-over { color: #b45f06; background: var(--color-warning-050); font-weight: var(--fw-semibold); }
+
+/* Bouton « Bloqué » verrouillé tant que l'assistant n'a pas été consulté. */
+.status-btn.is-gated { border-style: dashed; color: var(--color-muted-fg); }
+.status-btn.is-gated:hover { background: var(--color-warning-050); color: #b45f06; }
+
+.icon-xs { width: 14px; height: 14px; }
+
 /* --- Responsive -------------------------------------------------------- */
 @media (max-width: 1024px) {
   .student-layout { grid-template-columns: 1fr; }
@@ -159,4 +221,6 @@
 }
 @media (max-width: 480px) {
   .task__actions .btn { flex: 1; }
+  .task__meta { flex-direction: column; align-items: stretch; }
+  .task__assign-select { width: 100%; }
 }

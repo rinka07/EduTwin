@@ -15,7 +15,7 @@ class SessionCreateBody(BaseModel):
     """Body de POST /api/session/create."""
     titre_tp: str
     duree_minutes: int
-    nb_taches: int
+    nb_taches: int  # contrainte métier : >= 3 (validée dans la route)
 
 
 class SessionCreateResponse(BaseModel):
@@ -38,6 +38,8 @@ class SessionInfoResponse(BaseModel):
     code_acces: str
     document_id: Optional[str] = None
     created_at: str
+    # Champ additif (EXTENSIONS) : temps imparti par tâche (minutes).
+    temps_par_tache: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -79,10 +81,90 @@ class EleveDashboard(BaseModel):
     taches_completes: int
     taches_total: int
     statut: Literal["actif", "bloque", "inactif"]
+    # Champs additifs (EXTENSIONS) : désambiguïsation & suivi fin. Optionnels
+    # pour rester rétro-compatibles avec le contrat figé.
+    numero_poste: Optional[int] = None
+    classe: Optional[str] = None
+    label: Optional[str] = None
+    etape_en_cours: Optional[str] = None
 
 
 class DashboardResponse(BaseModel):
     eleves: List[EleveDashboard]
+
+
+# ---------------------------------------------------------------------------
+# Postes (EXTENSIONS) : plusieurs élèves par machine
+# ---------------------------------------------------------------------------
+class PosteJoinBody(BaseModel):
+    """Body de POST /api/session/{session_id}/poste/join."""
+    code_acces: str
+    eleves: List[str]                 # 1 à 3 noms d'élèves
+    numero: Optional[int] = None      # n° de poste (auto si absent)
+    classe: Optional[str] = None
+
+
+class EleveInscrit(BaseModel):
+    eleve_id: str
+    nom: str
+
+
+class PosteJoinResponse(BaseModel):
+    poste_id: str
+    numero: int
+    classe: Optional[str] = None
+    eleves: List[EleveInscrit]
+    taches: List[TacheEleve]
+    duree_minutes: int
+    temps_par_tache: int
+
+
+class AssignationBody(BaseModel):
+    """Body de PUT /api/poste/{poste_id}/assignation."""
+    tache_id: str
+    eleve_id: str
+
+
+class AssignationItem(BaseModel):
+    tache_id: str
+    eleve_id: str
+
+
+class EleveProgression(BaseModel):
+    eleve_id: str
+    nom: str
+    progression: List["ProgressionItem"]
+
+
+class PosteCompletResponse(BaseModel):
+    poste_id: str
+    session_id: str
+    numero: int
+    classe: Optional[str] = None
+    taches: List[TacheEleve]
+    eleves: List[EleveProgression]
+    assignations: List[AssignationItem]
+    duree_minutes: int
+    temps_par_tache: int
+
+
+# ---------------------------------------------------------------------------
+# Ressources complémentaires (EXTENSIONS)
+# ---------------------------------------------------------------------------
+class RessourceResponse(BaseModel):
+    ressource_id: str
+    nom: str
+    statut: str  # "indexe" si le texte a enrichi le contexte IA, "stocke" sinon
+
+
+class RessourceItem(BaseModel):
+    ressource_id: str
+    nom: str
+    created_at: str
+
+
+class RessourcesListResponse(BaseModel):
+    ressources: List[RessourceItem]
 
 
 # ---------------------------------------------------------------------------

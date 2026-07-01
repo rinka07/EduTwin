@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/components.css">
+  <script defer src="js/i18n.js"></script>
   <style>
     /* Styles propres à l'accueil (page unique, pas de CSS dédié dans le périmètre). */
     .home-hero { text-align: center; padding: var(--sp-10) 0 var(--sp-6); }
@@ -40,7 +41,7 @@
   </style>
 </head>
 <body>
-  <a class="skip-link" href="#main">Aller au contenu principal</a>
+  <a class="skip-link" href="#main" data-i18n="nav.skip">Aller au contenu principal</a>
 
   <header class="app-header">
     <div class="app-header__inner">
@@ -53,16 +54,24 @@
         </span>
         <span>
           <span class="brand__name">EduTwin</span>
-          <span class="brand__sub">Assistant de TP · LAN · Hors-ligne</span>
+          <span class="brand__sub" data-i18n="brand.sub">Assistant de TP · LAN · Hors-ligne</span>
         </span>
       </a>
+      <span class="app-header__spacer"></span>
+      <label class="lang-picker">
+        <span class="sr-only" data-i18n="lang.label">Langue</span>
+        <select class="lang-select" aria-label="Langue / Language">
+          <option value="fr">FR</option>
+          <option value="en">EN</option>
+        </select>
+      </label>
     </div>
   </header>
 
   <main id="main" class="container container--narrow">
     <section class="home-hero">
-      <h1>Bienvenue sur EduTwin</h1>
-      <p>Choisissez votre espace pour démarrer un TP d'informatique.</p>
+      <h1 data-i18n="home.welcome">Bienvenue sur EduTwin</h1>
+      <p data-i18n="home.subtitle">Choisissez votre espace pour démarrer un TP d'informatique.</p>
     </section>
 
     <div class="grid grid-2" role="navigation" aria-label="Choix du profil">
@@ -73,10 +82,10 @@
             <path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/>
           </svg>
         </span>
-        <h2>Espace Enseignant</h2>
-        <p>Créez une session, importez la fiche TP et suivez la progression des élèves en temps réel.</p>
+        <h2 data-i18n="home.teacher.title">Espace Enseignant</h2>
+        <p data-i18n="home.teacher.desc">Créez une session, importez la fiche TP et suivez la progression des élèves en temps réel.</p>
         <span class="btn btn--primary">
-          Ouvrir l'espace enseignant
+          <span data-i18n="home.teacher.cta">Ouvrir l'espace enseignant</span>
           <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </span>
       </a>
@@ -88,16 +97,16 @@
             <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
           </svg>
         </span>
-        <h2>Espace Élève</h2>
-        <p>Rejoignez la session avec votre code d'accès, suivez les tâches et posez vos questions à l'assistant.</p>
+        <h2 data-i18n="home.student.title">Espace Élève</h2>
+        <p data-i18n="home.student.desc">Rejoignez la session avec votre code d'accès, suivez les tâches et posez vos questions à l'assistant.</p>
         <span class="btn btn--accent">
-          Rejoindre une session
+          <span data-i18n="home.student.cta">Rejoindre une session</span>
           <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </span>
       </a>
     </div>
 
-    <p class="home-footer">EduTwin fonctionne 100 % en local sur votre réseau — aucune connexion Internet requise.</p>
+    <p class="home-footer" data-i18n="home.footer">EduTwin fonctionne 100 % en local sur votre réseau — aucune connexion Internet requise.</p>
   </main>
 </body>
 </html>

@@ -382,6 +382,22 @@
 .btn--danger-ghost:hover { background: var(--color-danger-050); }
 .btn--danger-ghost.is-armed { background: var(--color-danger); color: #fff; }
 
+/* --- Sélecteur de langue (en-tête) ------------------------------------- */
+.lang-picker { display: inline-flex; align-items: center; }
+.lang-select {
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: rgba(255, 255, 255, .10);
+  color: #fff;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+.lang-select option { color: var(--color-foreground); }
+.lang-select:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(255, 255, 255, .45); }
+
 /* --- Champ mot de passe avec bascule afficher/masquer ------------------ */
 .input-password { position: relative; display: flex; align-items: center; }
 .input-password .input { padding-right: 46px; width: 100%; }

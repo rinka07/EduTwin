@@ -31,6 +31,21 @@ Machine enseignant                     Postes élèves (×N)
 - **IA** : extraction PDF/DOCX + RAG simple + client Ollama (`backend/ia/`)
 - **Frontend** : HTML/CSS/JS vanilla, sans CDN (`frontend/`), servi par FastAPI
 - Contrat technique figé : voir [`CONTRAT.md`](CONTRAT.md)
+- Extensions (multi-élèves par poste, minuteur, notifications typées, i18n FR/EN,
+  ressources IA, verrouillages pédagogiques…) : voir [`EXTENSIONS.md`](EXTENSIONS.md)
+
+## Nouveautés (extensions)
+
+- **Plusieurs élèves par poste** : à la connexion, on ajoute 1 à 3 élèves sur une
+  même machine et on répartit nominativement les étapes entre eux.
+- **Temps par tâche** : la durée du TP est divisée par le nombre d'étapes ; un
+  minuteur alerte (sans bloquer) au dépassement.
+- **Notifications enseignant typées** (connecté / en cours / bloqué / terminé /
+  retard / question), filtrables par élève et par statut.
+- **Blocage conditionné** : « Bloqué » requiert d'avoir consulté l'assistant.
+- **Verrouillage « Terminé »**, **≥ 3 étapes**, **bilingue FR/EN**, **ressources
+  complémentaires** pour l'IA, **reprise après déconnexion**, **désambiguïsation
+  des homonymes**. Détails dans [`EXTENSIONS.md`](EXTENSIONS.md).
 
 ## Prérequis
 

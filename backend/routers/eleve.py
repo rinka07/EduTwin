@@ -65,7 +65,18 @@ async def maj_tache(eleve_id: str, tache_id: str, body: TachePatchBody) -> dict:
         raise HTTPException(status_code=404, detail="eleve introuvable")
 
     session_id = eleve["session_id"]
-    db.patch_tache(eleve_id, tache_id, body.statut)
+    # Verrouillage "Terminé" : une tâche complétée ne peut plus être rouverte.
+    try:
+        db.patch_tache(eleve_id, tache_id, body.statut)
+    except db.TacheVerrouillee:
+        raise HTTPException(
+            status_code=409,
+            detail="tâche déjà terminée : statut verrouillé",
+        )
+
+    # Contexte additif (EXTENSIONS) pour des notifications précises côté enseignant.
+    poste = db.get_poste(eleve.get("poste_id"))
+    tache = next((t for t in db.get_taches(session_id) if t["id"] == tache_id), None)
 
     # Push WebSocket : évènement spécifique PUIS snapshot dashboard.
     await broadcast(session_id, {
@@ -73,7 +84,10 @@ async def maj_tache(eleve_id: str, tache_id: str, body: TachePatchBody) -> dict:
         "data": {
             "eleve_id": eleve_id,
             "nom": eleve["nom"],
+            "classe": eleve.get("classe"),
+            "numero_poste": poste["numero"] if poste else None,
             "tache_id": tache_id,
+            "titre_tache": tache["titre"] if tache else None,
             "statut": body.statut,
         },
     })

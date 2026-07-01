@@ -85,6 +85,16 @@ export async function patchJSON(url, body) {
   return traiterReponse(response);
 }
 
+/** PUT JSON. */
+export async function putJSON(url, body) {
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: entetes({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  return traiterReponse(response);
+}
+
 /** DELETE JSON. */
 export async function deleteJSON(url) {
   const response = await fetch(url, { method: "DELETE", headers: entetes() });

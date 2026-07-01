@@ -236,3 +236,66 @@
 .tache-edit__fields { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
 .tache-edit__consigne { font-family: var(--font-mono); font-size: var(--fs-sm); resize: vertical; }
 .tache-edit__actions { display: flex; gap: var(--sp-2); }
+
+/* ======================================================================
+   EXTENSIONS : KPI cliquables, ressources, notifications typées, filtres
+   ====================================================================== */
+
+/* KPI utilisés comme filtres cliquables (connectés / bloqués). */
+.kpi--action {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+.kpi--action:hover { border-color: var(--color-secondary); }
+.kpi--action:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.kpi--action.is-pressed { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-secondary-050); }
+
+/* Zone de dépôt compacte (ressources). */
+.dropzone--sm { padding: var(--sp-4); }
+
+/* Liste des ressources déposées. */
+.res-list { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
+.res-item {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-background); font-size: var(--fs-sm);
+  color: var(--color-muted-fg);
+}
+.res-item a { color: var(--color-secondary); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
+
+/* Filtres du flux de notifications. */
+.feed-filters { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.select--sm { min-height: 36px; width: auto; min-width: 130px; font-size: var(--fs-sm); padding: var(--sp-1) var(--sp-2); }
+
+/* Étiquette de type dans une notification (icône + texte, pas la couleur seule). */
+.feed-item__tag {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  margin-bottom: 2px;
+}
+.cell-step { font-size: var(--fs-sm); color: var(--color-muted-fg); }
+
+/* Couleurs par TYPE de notification (icône + tag). Différenciation visuelle
+   assurée par la couleur ET l'icône ET le libellé (accessibilité). */
+.feed-item__icon--connecte { background: var(--color-secondary-050); color: var(--color-secondary); }
+.feed-item__icon--en_cours { background: var(--color-info-050);      color: #1d4fd0; }
+.feed-item__icon--bloque   { background: var(--color-danger-050);    color: var(--color-danger); }
+.feed-item__icon--complete { background: var(--color-success-050);   color: var(--color-accent); }
+.feed-item__icon--retard   { background: var(--color-warning-050);   color: #b45f06; }
+.feed-item__icon--question { background: var(--color-muted);         color: var(--color-muted-fg); }
+.feed-item__tag--connecte { color: var(--color-secondary); }
+.feed-item__tag--en_cours { color: #1d4fd0; }
+.feed-item__tag--bloque   { color: var(--color-danger); }
+.feed-item__tag--complete { color: var(--color-accent); }
+.feed-item__tag--retard   { color: #b45f06; }
+.feed-item__tag--question { color: var(--color-muted-fg); }
+/* Léger liseré gauche coloré selon le type (repère supplémentaire). */
+.feed-item--bloque, .feed-item--retard { border-left: 3px solid; padding-left: var(--sp-2); }
+.feed-item--bloque { border-left-color: var(--color-danger); }
+.feed-item--retard { border-left-color: var(--color-warning); }

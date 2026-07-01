@@ -1,24 +1,24 @@
 /* ==========================================================================
-   EduTwin — student.js
-   Logique de l'espace élève :
-   1. Connexion       → POST /api/session/{session_id}/eleve/join
-   2. Vue TP          → liste des tâches + PATCH /api/eleve/{id}/tache/{id}
-   3. Chat IA         → POST /api/chat
+   EduTwin — student.js  (espace élève, gestion multi-élèves par poste)
 
-   CHOIX DE CONCEPTION — transmission du session_id :
-   Le contrat impose que « join » cible /api/session/{session_id}/eleve/join.
-   L'élève a donc besoin du session_id EN PLUS du code d'accès. On le récupère
-   de deux façons complémentaires :
-     • via le paramètre d'URL ?session=... (lien préparé par l'enseignant,
-       bouton « Copier le lien élève » côté teacher.js) → champ pré-rempli ;
-     • sinon l'élève colle manuellement l'identifiant communiqué par l'enseignant.
-   Ainsi l'écran reste simple et 100 % conforme au contrat.
+   1. Connexion POSTE  → POST /api/session/{sid}/poste/join (1 à 3 élèves)
+   2. Vue TP partagée  → sélecteur d'élève actif, répartition des étapes,
+                         minuteur par étape, blocage conditionné au chatbot,
+                         verrouillage « Terminé »
+   3. Chat IA          → POST /api/chat (par élève actif)
+   4. Reprise          → GET /api/poste/{pid} après déconnexion
+
+   L'API figée (PATCH /api/eleve/{id}/tache/{id}) reste inchangée : la
+   progression demeure suivie individuellement par élève.
    ========================================================================== */
 
-import { postJSON, patchJSON, getJSON } from "./api.js";
+import { postJSON, patchJSON, putJSON, getJSON } from "./api.js";
 
-// Clé de persistance : garde l'élève connecté après une actualisation de page.
-const CLE_ELEVE = "edutwin_eleve";
+const t = (k, p) => (window.EduI18n ? window.EduI18n.t(k, p) : k);
+
+/* Clés de persistance : garde le poste + son état après une actualisation. */
+const CLE_POSTE = "edutwin_poste";
+const cleEtat = (pid) => `edutwin_poste_state_${pid}`;
 
 /* --- Helpers UI locaux -------------------------------------------------- */
 function esc(s) {
@@ -50,68 +50,110 @@ function setLoading(btn, loading, texte) {
 /* --- État --------------------------------------------------------------- */
 const state = {
   sessionId: null,
-  eleveId: null,
-  nom: null,
+  posteId: null,
+  numero: null,
+  classe: null,
+  eleves: [],                 // [{ eleve_id, nom }]
+  activeEleveId: null,
   taches: [],                 // [{ id, titre, consigne }]
-  statuts: new Map(),         // tache_id → statut courant
+  tempsParTache: 0,           // minutes
+  statuts: new Map(),         // eleveId → Map(tacheId → statut)
+  assignations: new Map(),    // tacheId → eleveId
+  hasChatted: new Set(),      // eleveId ayant consulté l'assistant
+  timerStarts: new Map(),     // `${eleveId}:${tacheId}` → ts (ms) de démarrage
+  timerOver: new Set(),       // `${eleveId}:${tacheId}` déjà signalés en retard
+  chatLogs: new Map(),        // eleveId → [{ role, texte, ts }]
+  pendingConsultTache: null,  // tâche pour laquelle l'élève va consulter l'IA
 };
 
-/* --------------------------------------------------------------------------
-   Pré-remplissage du session_id depuis l'URL (?session=...)
-   -------------------------------------------------------------------------- */
+const activeStatuts = () => {
+  if (!state.statuts.has(state.activeEleveId)) state.statuts.set(state.activeEleveId, new Map());
+  return state.statuts.get(state.activeEleveId);
+};
+const nomEleve = (id) => (state.eleves.find((e) => e.eleve_id === id)?.nom) || "";
+
+/* ==========================================================================
+   1. CONNEXION AU POSTE
+   ========================================================================== */
 (function prefillSession() {
-  const params = new URLSearchParams(location.search);
-  const s = params.get("session");
+  const s = new URLSearchParams(location.search).get("session");
   if (s) document.getElementById("session_id").value = s.trim();
 })();
 
-/* --------------------------------------------------------------------------
-   1. Connexion à la session
-   -------------------------------------------------------------------------- */
+/* Champs d'élèves dynamiques (1 à 3) */
+const elevesFields = document.getElementById("eleves-fields");
+const btnAddEleve = document.getElementById("btn-add-eleve");
+
+function ligneEleve() {
+  const row = document.createElement("div");
+  row.className = "eleve-row";
+  row.innerHTML = `
+    <input class="input eleve-nom" type="text" autocomplete="off"
+           data-i18n-attr="placeholder:student.eleve.placeholder"
+           placeholder="${esc(t("student.eleve.placeholder"))}">
+    <button class="btn btn--sm btn--danger-ghost eleve-remove" type="button"
+            aria-label="${esc(t("student.eleve.remove"))}">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>`;
+  return row;
+}
+function majBoutonsEleves() {
+  const rows = elevesFields.querySelectorAll(".eleve-row");
+  rows.forEach((r) => r.querySelector(".eleve-remove").style.display = rows.length > 1 ? "" : "none");
+  btnAddEleve.disabled = rows.length >= 3;
+}
+elevesFields.appendChild(ligneEleve());
+majBoutonsEleves();
+
+btnAddEleve.addEventListener("click", () => {
+  if (elevesFields.querySelectorAll(".eleve-row").length >= 3) return;
+  const row = ligneEleve();
+  elevesFields.appendChild(row);
+  row.querySelector(".eleve-nom").focus();
+  majBoutonsEleves();
+});
+elevesFields.addEventListener("click", (e) => {
+  const btn = e.target.closest(".eleve-remove");
+  if (!btn) return;
+  btn.closest(".eleve-row").remove();
+  majBoutonsEleves();
+});
+
 const formJoin = document.getElementById("form-join");
 const btnJoin = document.getElementById("btn-join");
 
 formJoin.addEventListener("submit", async (e) => {
   e.preventDefault();
-  ["err-nom", "err-code", "err-session", "err-join"].forEach((id) => (document.getElementById(id).textContent = ""));
+  ["err-code", "err-session", "err-eleves", "err-join"].forEach((id) => (document.getElementById(id).textContent = ""));
 
-  const nom_eleve = document.getElementById("nom_eleve").value.trim();
   const code_acces = document.getElementById("code_acces").value.trim().toUpperCase();
   const session_id = document.getElementById("session_id").value.trim();
+  const classe = document.getElementById("classe").value.trim();
+  const numeroRaw = document.getElementById("numero").value.trim();
+  const noms = [...elevesFields.querySelectorAll(".eleve-nom")]
+    .map((i) => i.value.trim()).filter(Boolean);
 
-  // Validations près des champs
-  if (!nom_eleve) { erreurChamp("err-nom", "Indiquez votre nom.", "nom_eleve"); return; }
-  if (!code_acces) { erreurChamp("err-code", "Saisissez le code d'accès.", "code_acces"); return; }
-  if (!session_id) { erreurChamp("err-session", "L'identifiant de session est requis.", "session_id"); return; }
+  if (!code_acces) { erreurChamp("err-code", t("student.err.code"), "code_acces"); return; }
+  if (!session_id) { erreurChamp("err-session", t("student.err.session"), "session_id"); return; }
+  if (!noms.length) { document.getElementById("err-eleves").textContent = t("student.err.noeleve"); return; }
 
-  setLoading(btnJoin, true, "Connexion…");
+  setLoading(btnJoin, true, t("student.join.submit"));
   try {
-    // Contrat : POST /api/session/{session_id}/eleve/join { nom_eleve, code_acces }
-    //           → { eleve_id, taches: [{ id, titre, consigne }] }
-    const data = await postJSON(
-      `/api/session/${encodeURIComponent(session_id)}/eleve/join`,
-      { nom_eleve, code_acces }
-    );
-    state.sessionId = session_id;
-    state.eleveId = data.eleve_id;
-    state.nom = nom_eleve;
-    state.taches = data.taches || [];
-    state.taches.forEach((t) => state.statuts.set(t.id, null));
+    const body = { code_acces, eleves: noms };
+    if (classe) body.classe = classe;
+    if (numeroRaw) body.numero = parseInt(numeroRaw, 10);
+    const data = await postJSON(`/api/session/${encodeURIComponent(session_id)}/poste/join`, body);
 
-    // Mémorise l'élève pour rester connecté après une actualisation.
-    localStorage.setItem(CLE_ELEVE, JSON.stringify({ eleveId: state.eleveId }));
-
+    initEtatDepuisJoin(session_id, data);
+    localStorage.setItem(CLE_POSTE, JSON.stringify({ posteId: state.posteId }));
     entrerVueTP();
-    toast(`Bienvenue, ${nom_eleve} !`, "success");
+    toast(t("student.welcome", { noms: noms.join(", ") }), "success");
   } catch (err) {
-    // 400 (brief Lot 1) ou 403 = code d'accès invalide
-    const msg = (err.status === 400 || err.status === 403)
-      ? "Code d'accès invalide."
-      : (err.message || "Connexion impossible.");
+    const msg = (err.status === 400 || err.status === 403) ? t("student.err.code.invalid") : (err.message || t("student.err.join"));
     document.getElementById("err-join").textContent = msg;
     toast(msg, "danger");
   } finally {
-    setLoading(btnJoin, false, "Rejoindre");
+    setLoading(btnJoin, false, t("student.join.submit"));
   }
 });
 
@@ -120,128 +162,321 @@ function erreurChamp(idErreur, message, idChamp) {
   document.getElementById(idChamp)?.focus();
 }
 
-/* --------------------------------------------------------------------------
-   2. Vue TP : bascule d'écran + rendu des tâches
-   -------------------------------------------------------------------------- */
+function initEtatDepuisJoin(sessionId, data) {
+  state.sessionId = sessionId;
+  state.posteId = data.poste_id;
+  state.numero = data.numero;
+  state.classe = data.classe;
+  state.eleves = data.eleves || [];
+  state.taches = data.taches || [];
+  state.tempsParTache = data.temps_par_tache || 0;
+  state.activeEleveId = state.eleves[0]?.eleve_id || null;
+  state.statuts = new Map();
+  state.eleves.forEach((el) => state.statuts.set(el.eleve_id, new Map()));
+}
+
+/* ==========================================================================
+   2. VUE TP
+   ========================================================================== */
 function entrerVueTP() {
   document.getElementById("ecran-join").classList.add("hidden");
   document.getElementById("ecran-tp").classList.remove("hidden");
   document.getElementById("btn-quitter")?.classList.remove("hidden");
-  document.getElementById("header-eleve").textContent = state.nom;
-  document.getElementById("tp-sous-titre").textContent =
-    "Mettez à jour votre avancement et posez vos questions à l'assistant.";
+  majEntetePoste();
+  renderSwitcher();
   renderTaches();
   majProgression();
+  renderChat();
   document.getElementById("question").focus();
+  demarrerMinuteurs();
 }
 
+function majEntetePoste() {
+  const bits = [];
+  if (state.numero != null) bits.push(`${t("teacher.col.poste")} ${state.numero}`);
+  if (state.classe) bits.push(state.classe);
+  document.getElementById("header-poste").textContent = bits.join(" · ");
+}
+
+/* --- Sélecteur d'élève actif ------------------------------------------- */
+function renderSwitcher() {
+  const wrap = document.getElementById("eleve-switcher");
+  const card = document.getElementById("switcher-card");
+  // Un seul élève : pas de sélecteur (poste individuel).
+  if (state.eleves.length <= 1) { card.classList.add("hidden"); return; }
+  card.classList.remove("hidden");
+  const label = `<span class="eleve-switcher__label">${esc(t("student.active.label"))} :</span>`;
+  wrap.innerHTML = label + state.eleves.map((el) => {
+    const actif = el.eleve_id === state.activeEleveId;
+    return `<button class="eleve-tab${actif ? " is-active" : ""}" type="button"
+      data-eleve="${esc(el.eleve_id)}" aria-pressed="${actif}">${esc(el.nom)}</button>`;
+  }).join("");
+}
+document.getElementById("eleve-switcher").addEventListener("click", (e) => {
+  const btn = e.target.closest(".eleve-tab");
+  if (!btn) return;
+  state.activeEleveId = btn.dataset.eleve;
+  renderSwitcher();
+  renderTaches();
+  majProgression();
+  renderChat();
+  persistEtat();
+});
+
+/* --- Rendu des tâches --------------------------------------------------- */
 function renderTaches() {
   const liste = document.getElementById("task-list");
   if (!state.taches.length) {
     liste.innerHTML = `
       <div class="empty">
         <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
-        <span class="empty__title">Aucune tâche pour l'instant</span>
-        <span class="text-sm">L'enseignant n'a pas encore importé la fiche TP.</span>
+        <span class="empty__title">${esc(t("student.empty.title"))}</span>
+        <span class="text-sm">${esc(t("student.empty.desc"))}</span>
       </div>`;
     return;
   }
-  liste.innerHTML = state.taches.map((t, i) => renderTache(t, i + 1)).join("");
+  liste.innerHTML = state.taches.map((tache, i) => renderTache(tache, i + 1)).join("");
 }
 
-/** Rendu d'une tâche avec ses 3 boutons de statut. */
-function renderTache(t, num) {
-  const statut = state.statuts.get(t.id) || "";
-  const btn = (val, label) =>
-    `<button class="btn btn--sm btn--ghost status-btn${statut === val ? " is-active" : ""}"
-             type="button" data-tache="${esc(t.id)}" data-value="${val}"
-             aria-pressed="${statut === val}">${label}</button>`;
+function renderTache(tache, num) {
+  const statuts = activeStatuts();
+  const statut = statuts.get(tache.id) || "";
+  const assignedTo = state.assignations.get(tache.id) || "";
+  const isMine = assignedTo === state.activeEleveId;
+  const editable = !assignedTo || isMine;
+  const locked = statut === "complete";
+  const consulted = state.hasChatted.has(state.activeEleveId);
+
+  const options = [`<option value="">${esc(t("student.assign.none"))}</option>`]
+    .concat(state.eleves.map((el) =>
+      `<option value="${esc(el.eleve_id)}"${el.eleve_id === assignedTo ? " selected" : ""}>${esc(el.nom)}</option>`))
+    .join("");
+
+  const btn = (val, labelKey, extraCls = "", extraAttr = "") => {
+    const disabled = !editable || (locked && val !== "complete");
+    return `<button class="btn btn--sm btn--ghost status-btn${statut === val ? " is-active" : ""}${extraCls}"
+             type="button" data-tache="${esc(tache.id)}" data-value="${val}"
+             aria-pressed="${statut === val}"${disabled ? " disabled" : ""}${extraAttr}>${esc(t(labelKey))}</button>`;
+  };
+  // Bouton « Bloqué » : verrou tant que l'assistant n'a pas été consulté.
+  const gated = editable && !locked && !consulted;
+  const bloqueBtn = `<button class="btn btn--sm btn--ghost status-btn${statut === "bloque" ? " is-active" : ""}${gated ? " is-gated" : ""}"
+      type="button" data-tache="${esc(tache.id)}" data-value="bloque"
+      aria-pressed="${statut === "bloque"}"${(!editable || locked) ? " disabled" : ""}
+      ${gated ? `title="${esc(t("student.blocked.hint"))}"` : ""}>
+      ${gated ? '<svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> ' : ""}${esc(t("student.status.bloque"))}</button>`;
+
+  const timer = (state.tempsParTache > 0)
+    ? `<span class="task-timer" id="timer-${esc(tache.id)}" data-tache="${esc(tache.id)}">
+         <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/></svg>
+         <span class="task-timer__text">${esc(t("student.timer.label"))} ${state.tempsParTache} min</span>
+       </span>`
+    : "";
+
+  const badge = isMine
+    ? `<span class="badge badge--info task__mine"><span class="badge__dot" aria-hidden="true"></span>${esc(t("student.badge.mine"))}</span>`
+    : "";
+  const hint = locked ? t("student.locked.hint") : (!editable ? t("student.notMine.hint") : "");
+
   return `
-    <article class="task" data-statut="${esc(statut)}" data-id="${esc(t.id)}">
+    <article class="task${isMine ? " task--mine" : ""}${!editable ? " task--other" : ""}" data-statut="${esc(statut)}" data-id="${esc(tache.id)}">
       <div class="task__head">
         <div class="task__title-wrap">
           <span class="task__num" aria-hidden="true">${num}</span>
-          <h3 class="task__title">${esc(t.titre)}</h3>
+          <h3 class="task__title">${esc(tache.titre)}</h3>
         </div>
+        ${badge}
       </div>
-      <pre class="task__consigne">${esc(t.consigne)}</pre>
-      <div class="task__actions" role="group" aria-label="Statut de la tâche ${esc(t.titre)}">
-        ${btn("en_cours", "En cours")}
-        ${btn("bloque", "Bloqué")}
-        ${btn("complete", "Terminé")}
+      <pre class="task__consigne">${esc(tache.consigne)}</pre>
+      <div class="task__meta">
+        <label class="task__assign">
+          <span class="task__assign-label">${esc(t("student.assignTo"))}</span>
+          <select class="select task__assign-select" data-tache="${esc(tache.id)}">${options}</select>
+        </label>
+        ${timer}
       </div>
+      <div class="task__actions" role="group" aria-label="${esc(t("student.tasks"))}">
+        ${btn("en_cours", "student.status.encours")}
+        ${bloqueBtn}
+        ${btn("complete", "student.status.termine")}
+      </div>
+      ${hint ? `<p class="task__hint">${esc(hint)}</p>` : ""}
     </article>`;
 }
 
-// Délégation d'évènements pour les boutons de statut
+/* --- Actions sur les tâches -------------------------------------------- */
 document.getElementById("task-list").addEventListener("click", async (e) => {
   const btn = e.target.closest(".status-btn");
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
   const tacheId = btn.dataset.tache;
   const statut = btn.dataset.value;
+  const statuts = activeStatuts();
+  const ancien = statuts.get(tacheId);
 
-  const ancien = state.statuts.get(tacheId);
-  if (ancien === statut) return; // déjà dans cet état
+  // Blocage conditionné : première tentative de « Bloqué » sans avoir consulté
+  // l'assistant → on redirige vers le chat au lieu de bloquer.
+  if (statut === "bloque" && !state.hasChatted.has(state.activeEleveId)) {
+    state.pendingConsultTache = tacheId;
+    const tache = state.taches.find((x) => x.id === tacheId);
+    const champ = document.getElementById("question");
+    champ.value = t("chat.prefill", { tache: tache ? tache.titre : "" });
+    champ.focus();
+    toast(t("student.blocked.hint"), "info");
+    return;
+  }
 
-  // Mise à jour optimiste de l'UI
-  state.statuts.set(tacheId, statut);
+  if (ancien === statut) return;
+
+  statuts.set(tacheId, statut);
+  gererMinuteur(tacheId, statut);
   majTacheUI(tacheId);
   majProgression();
+  persistEtat();
 
   try {
-    // Contrat : PATCH /api/eleve/{eleve_id}/tache/{tache_id} { statut } → { ok: true }
-    await patchJSON(`/api/eleve/${state.eleveId}/tache/${tacheId}`, { statut });
+    await patchJSON(`/api/eleve/${state.activeEleveId}/tache/${tacheId}`, { statut });
   } catch (err) {
-    // Rollback en cas d'échec
-    state.statuts.set(tacheId, ancien);
+    // Rollback (dont 409 = tâche verrouillée côté serveur).
+    statuts.set(tacheId, ancien);
     majTacheUI(tacheId);
     majProgression();
-    toast(err.message || "Mise à jour impossible.", "danger");
+    persistEtat();
+    toast(err.status === 409 ? t("student.locked.hint") : (err.message || "Mise à jour impossible."), "danger");
   }
 });
 
-/** Rafraîchit le rendu d'une seule tâche (boutons + bordure). */
+/* Répartition d'une étape à un élève du poste */
+document.getElementById("task-list").addEventListener("change", async (e) => {
+  const sel = e.target.closest(".task__assign-select");
+  if (!sel) return;
+  const tacheId = sel.dataset.tache;
+  const eleveId = sel.value;
+  const ancien = state.assignations.get(tacheId) || "";
+  if (eleveId) state.assignations.set(tacheId, eleveId);
+  else state.assignations.delete(tacheId);
+  renderTaches();
+  try {
+    if (eleveId) await putJSON(`/api/poste/${state.posteId}/assignation`, { tache_id: tacheId, eleve_id: eleveId });
+  } catch (err) {
+    if (ancien) state.assignations.set(tacheId, ancien); else state.assignations.delete(tacheId);
+    renderTaches();
+    toast(err.message || "Assignation impossible.", "danger");
+  }
+});
+
 function majTacheUI(tacheId) {
-  const statut = state.statuts.get(tacheId) || "";
+  // Rendu ciblé d'une seule tâche (sobriété : évite de tout reconstruire).
+  const num = state.taches.findIndex((x) => x.id === tacheId) + 1;
+  const tache = state.taches.find((x) => x.id === tacheId);
   const article = document.querySelector(`.task[data-id="${CSS.escape(tacheId)}"]`);
-  if (!article) return;
-  article.dataset.statut = statut;
-  article.querySelectorAll(".status-btn").forEach((b) => {
-    const actif = b.dataset.value === statut;
-    b.classList.toggle("is-active", actif);
-    b.setAttribute("aria-pressed", String(actif));
-  });
+  if (!article || !tache) return;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = renderTache(tache, num);
+  article.replaceWith(tmp.firstElementChild);
 }
 
-/** Barre de progression globale (tâches "complete" / total). */
 function majProgression() {
+  const statuts = activeStatuts();
   const total = state.taches.length;
-  const faites = [...state.statuts.values()].filter((s) => s === "complete").length;
+  const faites = [...statuts.values()].filter((s) => s === "complete").length;
   const pct = total ? Math.round((faites / total) * 100) : 0;
   document.getElementById("progress-label").textContent = `${faites} / ${total}`;
   document.getElementById("progress-global-bar").style.width = `${pct}%`;
   document.getElementById("progress-pct").textContent = `${pct}%`;
 }
 
-/* --------------------------------------------------------------------------
-   3. Chat IA
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   Minuteur par étape (alerte sans bloquer)
+   ========================================================================== */
+let minuteurInterval = null;
+function cleTimer(tacheId) { return `${state.activeEleveId}:${tacheId}`; }
+
+function gererMinuteur(tacheId, statut) {
+  const cle = cleTimer(tacheId);
+  if (statut === "en_cours") {
+    if (!state.timerStarts.has(cle)) state.timerStarts.set(cle, Date.now());
+  } else {
+    state.timerStarts.delete(cle);
+    state.timerOver.delete(cle);
+  }
+}
+
+function demarrerMinuteurs() {
+  if (minuteurInterval || state.tempsParTache <= 0) return;
+  minuteurInterval = setInterval(tickMinuteurs, 1000);
+  tickMinuteurs();
+}
+
+function tickMinuteurs() {
+  if (state.tempsParTache <= 0) return;
+  const budgetMs = state.tempsParTache * 60 * 1000;
+  const statuts = activeStatuts();
+  state.taches.forEach((tache) => {
+    const el = document.getElementById(`timer-${cssId(tache.id)}`);
+    if (!el) return;
+    const cle = cleTimer(tache.id);
+    const txt = el.querySelector(".task-timer__text");
+    if (statuts.get(tache.id) === "en_cours" && state.timerStarts.has(cle)) {
+      const reste = budgetMs - (Date.now() - state.timerStarts.get(cle));
+      if (reste <= 0) {
+        el.classList.add("is-over");
+        txt.textContent = t("student.timer.over");
+        if (!state.timerOver.has(cle)) {
+          state.timerOver.add(cle);
+          signalerRetard(tache);
+        }
+      } else {
+        el.classList.remove("is-over");
+        el.classList.add("is-running");
+        txt.textContent = `${formatMMSS(reste)} ${t("student.timer.remaining")}`;
+      }
+    } else {
+      el.classList.remove("is-over", "is-running");
+      txt.textContent = `${t("student.timer.label")} ${state.tempsParTache} min`;
+    }
+  });
+}
+
+function cssId(id) { return String(id).replace(/"/g, '\\"'); }
+function formatMMSS(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+async function signalerRetard(tache) {
+  toast(t("student.timer.overToast", { tache: tache.titre }), "info");
+  try { await postJSON(`/api/eleve/${state.activeEleveId}/tache/${tache.id}/retard`, {}); }
+  catch (_) { /* alerte best-effort */ }
+  persistEtat();
+}
+
+/* ==========================================================================
+   3. CHAT IA (par élève actif)
+   ========================================================================== */
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("question");
 const chatLog = document.getElementById("chat-log");
 const btnChat = document.getElementById("btn-chat");
 
-// Auto-agrandissement du textarea + envoi avec Entrée (Maj+Entrée = nouvelle ligne)
 chatInput.addEventListener("input", () => {
   chatInput.style.height = "auto";
   chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + "px";
 });
 chatInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    chatForm.requestSubmit();
-  }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatForm.requestSubmit(); }
 });
+
+function logsActifs() {
+  if (!state.chatLogs.has(state.activeEleveId)) state.chatLogs.set(state.activeEleveId, []);
+  return state.chatLogs.get(state.activeEleveId);
+}
+
+function renderChat() {
+  chatLog.innerHTML = "";
+  const logs = logsActifs();
+  if (!logs.length) { ajouterBulle(t("chat.hello"), "ai", null, false); return; }
+  logs.forEach((m) => ajouterBulle(m.texte, m.role, m.ts, false));
+}
 
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -249,38 +484,39 @@ chatForm.addEventListener("submit", async (e) => {
   if (!question) return;
 
   ajouterBulle(question, "user");
+  logsActifs().push({ role: "user", texte: question });
   chatInput.value = "";
   chatInput.style.height = "auto";
   chatInput.focus();
 
-  // Indicateur « l'assistant réfléchit… »
+  // Consultation de l'assistant → débloque le bouton « Bloqué » pour cet élève.
+  const premiereConsult = !state.hasChatted.has(state.activeEleveId);
+  state.hasChatted.add(state.activeEleveId);
+  state.pendingConsultTache = null;
+  if (premiereConsult) renderTaches();
+  persistEtat();
+
   const penseur = ajouterTyping();
   btnChat.disabled = true;
-
   try {
-    // Contrat : POST /api/chat { eleve_id, session_id, question }
-    //           → { reponse, timestamp }
     const data = await postJSON("/api/chat", {
-      eleve_id: state.eleveId,
-      session_id: state.sessionId,
-      question,
+      eleve_id: state.activeEleveId, session_id: state.sessionId, question,
     });
     penseur.remove();
-    ajouterBulle(data.reponse || "(réponse vide)", "ai", data.timestamp);
+    const rep = data.reponse || "(réponse vide)";
+    ajouterBulle(rep, "ai", data.timestamp);
+    logsActifs().push({ role: "ai", texte: rep, ts: data.timestamp });
+    persistEtat();
   } catch (err) {
     penseur.remove();
-    ajouterBulle(
-      `Désolé, je n'ai pas pu répondre (${esc(err.message || "erreur")}). Réessaie dans un instant.`,
-      "ai"
-    );
-    toast("L'assistant est indisponible.", "danger");
+    ajouterBulle(t("chat.error"), "ai");
+    toast(t("chat.unavailable"), "danger");
   } finally {
     btnChat.disabled = false;
   }
 });
 
-/** Ajoute une bulle de chat (user = droite, ai = gauche). */
-function ajouterBulle(texte, role, timestamp) {
+function ajouterBulle(texte, role, timestamp, scroll = true) {
   const bulle = document.createElement("div");
   bulle.className = `chat-bubble chat-bubble--${role}`;
   bulle.textContent = texte;
@@ -291,54 +527,93 @@ function ajouterBulle(texte, role, timestamp) {
     bulle.appendChild(meta);
   }
   chatLog.appendChild(bulle);
-  chatLog.scrollTop = chatLog.scrollHeight;
+  if (scroll) chatLog.scrollTop = chatLog.scrollHeight;
 }
-
-/** Ajoute l'indicateur animé de réflexion et le renvoie. */
 function ajouterTyping() {
   const el = document.createElement("div");
   el.className = "chat-bubble chat-bubble--ai";
-  el.setAttribute("aria-label", "L'assistant réfléchit");
+  el.setAttribute("aria-label", "…");
   el.innerHTML = `<span class="typing" aria-hidden="true"><span></span><span></span><span></span></span>`;
   chatLog.appendChild(el);
   chatLog.scrollTop = chatLog.scrollHeight;
   return el;
 }
-
-/** Formate un timestamp ISO 8601 en heure locale FR (repli : texte brut). */
 function formaterHeure(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(window.EduI18n?.getLang() === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
-/* --------------------------------------------------------------------------
-   Persistance : restauration de la session élève après actualisation
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   PERSISTANCE & REPRISE APRÈS DÉCONNEXION
+   ========================================================================== */
+function persistEtat() {
+  if (!state.posteId) return;
+  try {
+    localStorage.setItem(cleEtat(state.posteId), JSON.stringify({
+      activeEleveId: state.activeEleveId,
+      hasChatted: [...state.hasChatted],
+      timerStarts: Object.fromEntries(state.timerStarts),
+      timerOver: [...state.timerOver],
+      chatLogs: Object.fromEntries([...state.chatLogs].map(([k, v]) => [k, v.slice(-30)])),
+    }));
+  } catch (_) {}
+}
+
+function restaurerEtatLocal() {
+  try {
+    const raw = localStorage.getItem(cleEtat(state.posteId));
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s.activeEleveId && state.eleves.some((e) => e.eleve_id === s.activeEleveId)) state.activeEleveId = s.activeEleveId;
+    state.hasChatted = new Set(s.hasChatted || []);
+    state.timerStarts = new Map(Object.entries(s.timerStarts || {}));
+    state.timerOver = new Set(s.timerOver || []);
+    state.chatLogs = new Map(Object.entries(s.chatLogs || {}).map(([k, v]) => [k, v]));
+  } catch (_) {}
+}
+
 function quitterSession() {
-  localStorage.removeItem(CLE_ELEVE);
+  if (state.posteId) localStorage.removeItem(cleEtat(state.posteId));
+  localStorage.removeItem(CLE_POSTE);
   location.reload();
 }
 document.getElementById("btn-quitter")?.addEventListener("click", quitterSession);
 
-(async function restaurerEleve() {
+(async function restaurerPoste() {
   let sauvegarde = null;
-  try { sauvegarde = JSON.parse(localStorage.getItem(CLE_ELEVE) || "null"); } catch (_) {}
-  if (!sauvegarde?.eleveId) return;
+  try { sauvegarde = JSON.parse(localStorage.getItem(CLE_POSTE) || "null"); } catch (_) {}
+  if (!sauvegarde?.posteId) return;
 
   try {
-    // Recharge tâches + progression à jour depuis le serveur (source de vérité).
-    const data = await getJSON(`/api/eleve/${encodeURIComponent(sauvegarde.eleveId)}`);
+    const data = await getJSON(`/api/poste/${encodeURIComponent(sauvegarde.posteId)}`);
     state.sessionId = data.session_id;
-    state.eleveId = data.eleve_id;
-    state.nom = data.nom;
+    state.posteId = data.poste_id;
+    state.numero = data.numero;
+    state.classe = data.classe;
+    state.tempsParTache = data.temps_par_tache || 0;
     state.taches = data.taches || [];
+    state.eleves = (data.eleves || []).map((e) => ({ eleve_id: e.eleve_id, nom: e.nom }));
     state.statuts = new Map();
-    state.taches.forEach((t) => state.statuts.set(t.id, null));
-    (data.progression || []).forEach((p) => state.statuts.set(p.tache_id, p.statut));
+    (data.eleves || []).forEach((e) => {
+      const m = new Map();
+      (e.progression || []).forEach((p) => m.set(p.tache_id, p.statut));
+      state.statuts.set(e.eleve_id, m);
+    });
+    state.assignations = new Map((data.assignations || []).map((a) => [a.tache_id, a.eleve_id]));
+    state.activeEleveId = state.eleves[0]?.eleve_id || null;
+    restaurerEtatLocal();
     entrerVueTP();
-  } catch (err) {
-    // Élève/séance disparu (base réinitialisée) : on revient à la connexion.
-    localStorage.removeItem(CLE_ELEVE);
+  } catch (_) {
+    localStorage.removeItem(CLE_POSTE);
   }
 })();
+
+/* Re-rendu au changement de langue (contenus dynamiques). */
+window.addEventListener("edu:langchange", () => {
+  if (!document.getElementById("ecran-tp").classList.contains("hidden")) {
+    renderSwitcher(); renderTaches(); majProgression(); renderChat(); majEntetePoste();
+  }
+  // Rafraîchit les placeholders des champs d'élèves de l'écran de connexion.
+  elevesFields.querySelectorAll(".eleve-nom").forEach((i) => (i.placeholder = t("student.eleve.placeholder")));
+});

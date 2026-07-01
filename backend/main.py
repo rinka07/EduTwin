@@ -23,9 +23,18 @@ from config import HOST, PORT, FRONTEND_DIR
 from websocket_manager import manager
 
 # --- Routers du Lot 1 (Backend Core) ---
-from routers.session import router as session_router
+from routers.session import (
+    router as session_router,
+    router_ressource as ressource_router,
+)
 from routers.eleve import router_session as eleve_session_router, router_eleve
 from routers.teacher import router as teacher_router, router_taches as taches_router
+# --- Routers EXTENSIONS (postes, assignations, reprise, retard) ---
+from routers.poste import (
+    router_session as poste_session_router,
+    router_poste,
+    router_eleve as poste_eleve_router,
+)
 
 
 @asynccontextmanager
@@ -60,12 +69,18 @@ def health() -> dict:
 
 # --- Inclusion des routers du Lot 1 ---
 app.include_router(session_router)
+app.include_router(ressource_router)
 app.include_router(eleve_session_router)
 app.include_router(router_eleve)
 
 # --- Espace enseignant : authentification, historique, édition des tâches ---
 app.include_router(teacher_router)
 app.include_router(taches_router)
+
+# --- EXTENSIONS : gestion des postes (multi-élèves), assignations, retard ---
+app.include_router(poste_session_router)
+app.include_router(router_poste)
+app.include_router(poste_eleve_router)
 
 # --- Endpoint chat (périmètre Lot 2) : monté s'il est disponible ---
 # Le Lot 1 n'implémente pas le chat ; on branche l'endpoint fourni par le Lot 2
