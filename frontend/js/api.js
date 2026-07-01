@@ -1,0 +1,84 @@
+/* ==========================================================================
+   EduTwin — api.js
+   Helpers fetch vers l'API FastAPI en URLs RELATIVES (même origine).
+   Toutes les fonctions renvoient une promesse ; en cas d'erreur HTTP,
+   elles rejettent avec une Error dont le message est lisible par l'UI
+   (utilise le champ `detail` renvoyé par FastAPI si présent).
+   ========================================================================== */
+
+/**
+ * Extrait un message d'erreur lisible d'une réponse non-OK.
+ * FastAPI renvoie typiquement { "detail": "..." }.
+ */
+async function extraireErreur(response) {
+  let message = `Erreur ${response.status}`;
+  try {
+    const data = await response.json();
+    if (data && typeof data.detail === "string") {
+      message = data.detail;
+    } else if (data && Array.isArray(data.detail) && data.detail[0]?.msg) {
+      // Erreurs de validation Pydantic (liste d'objets)
+      message = data.detail[0].msg;
+    }
+  } catch (_) {
+    // Corps non-JSON : on garde le message générique.
+  }
+  const err = new Error(message);
+  err.status = response.status;
+  return err;
+}
+
+/** Traite une réponse : renvoie le JSON ou lève une erreur. */
+async function traiterReponse(response) {
+  if (!response.ok) {
+    throw await extraireErreur(response);
+  }
+  // Certaines réponses peuvent être vides ; on tente le JSON prudemment.
+  const texte = await response.text();
+  return texte ? JSON.parse(texte) : {};
+}
+
+/** GET JSON. */
+export async function getJSON(url) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "Accept": "application/json" },
+  });
+  return traiterReponse(response);
+}
+
+/** POST JSON. */
+export async function postJSON(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  return traiterReponse(response);
+}
+
+/** PATCH JSON. */
+export async function patchJSON(url, body) {
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  return traiterReponse(response);
+}
+
+/**
+ * Upload d'un fichier via multipart/form-data.
+ * @param {string} url
+ * @param {File} fichier - le fichier à envoyer
+ * @param {string} champ - nom du champ (contrat : "fichier")
+ */
+export async function uploadFile(url, fichier, champ = "fichier") {
+  const formData = new FormData();
+  formData.append(champ, fichier);
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData, // NE PAS fixer Content-Type : le navigateur ajoute la boundary.
+  });
+  return traiterReponse(response);
+}

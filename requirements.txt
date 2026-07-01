@@ -1,0 +1,15 @@
+# EduTwin — dépendances Python (backend + IA)
+# Installation :  pip install -r requirements.txt
+# (identique à backend/requirements.txt)
+
+fastapi==0.115.6           # framework API + WebSocket
+uvicorn[standard]==0.34.0  # serveur ASGI (host 0.0.0.0 pour le LAN)
+python-multipart==0.0.20   # upload de la fiche TP (multipart/form-data)
+pypdf==5.1.0               # extraction de texte des PDF
+python-docx==1.1.2         # extraction de texte des fichiers Word (.docx)
+requests==2.32.3           # appel HTTP au LLM local Ollama
+
+# Remarque : Ollama n'est PAS un paquet pip. Installez-le à part pour la vraie IA :
+#   curl -fsSL https://ollama.com/install.sh | sh
+#   ollama serve && ollama pull mistral
+# Sans Ollama, l'assistant fonctionne en mode repli (passages de la fiche TP).

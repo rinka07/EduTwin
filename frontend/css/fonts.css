@@ -1,0 +1,78 @@
+/* ==========================================================================
+   EduTwin — Polices locales (hors-ligne, AUCUN CDN)
+   --------------------------------------------------------------------------
+   Les @font-face ci-dessous pointent vers des fichiers LOCAUX dans
+   frontend/fonts/. Si ces fichiers sont absents, le navigateur applique
+   automatiquement le fallback système déclaré dans tokens.css
+   (--font-sans / --font-mono) : l'application reste parfaitement lisible.
+   `font-display: swap` évite tout texte invisible pendant le chargement.
+   Aucun téléchargement réseau : déposez simplement les .woff2 dans
+   frontend/fonts/ pour activer Fira.
+   ========================================================================== */
+
+/* --- Fira Sans (UI / texte) --- */
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: local("Fira Sans Light"), url("../fonts/FiraSans-Light.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("Fira Sans Regular"), url("../fonts/FiraSans-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local("Fira Sans Medium"), url("../fonts/FiraSans-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("Fira Sans SemiBold"), url("../fonts/FiraSans-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("Fira Sans Bold"), url("../fonts/FiraSans-Bold.woff2") format("woff2");
+}
+
+/* --- Fira Code (données / code / code d'accès) --- */
+@font-face {
+  font-family: "Fira Code";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("Fira Code Regular"), url("../fonts/FiraCode-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Code";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local("Fira Code Medium"), url("../fonts/FiraCode-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Code";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("Fira Code SemiBold"), url("../fonts/FiraCode-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Code";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("Fira Code Bold"), url("../fonts/FiraCode-Bold.woff2") format("woff2");
+}
