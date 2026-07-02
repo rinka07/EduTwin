@@ -8,9 +8,15 @@ n'ajoute que de nouvelles tables, colonnes, routes et types d'évènements.
 ## 1. Fonctionnalités
 
 - **Multi-élèves par poste** : une machine (poste) héberge 1 à 3 élèves, chacun
-  suivi individuellement. Répartition nominative des étapes entre eux.
-- **Temps par tâche** : `temps_par_tache = duree_minutes // nb_taches`. Minuteur
-  par étape côté élève qui **alerte sans bloquer** (notification « retard »).
+  suivi individuellement. **Répartition automatique** des étapes entre eux à la
+  connexion (round-robin), ajustable ensuite manuellement.
+- **Temps par tâche & enchaînement automatique** : `temps_par_tache =
+  duree_minutes // nb_taches`. Pour chaque élève, le décompte de sa **première
+  tâche démarre dès la connexion** ; dès qu'une tâche est **terminée** ou que son
+  **temps est écoulé**, la tâche suivante de l'élève est **lancée
+  automatiquement**. Le dépassement **alerte l'enseignant sans bloquer** l'élève
+  (notification « retard »). Les minuteurs de tous les élèves du poste tournent en
+  parallèle, même hors de l'écran actif.
 - **Nombre d'étapes** : contraint à **≥ 3**, et jamais au-delà du nombre défini
   pour le TP (« pas plus, pas moins »).
 - **Notifications enseignant typées** : connecté / en cours / bloqué / terminé /

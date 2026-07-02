@@ -207,6 +207,14 @@
 .status-btn.is-gated { border-style: dashed; color: var(--color-muted-fg); }
 .status-btn.is-gated:hover { background: var(--color-warning-050); color: #b45f06; }
 
+/* Tâche courante (minuteur séquentiel en cours) : mise en avant claire. */
+.task--current { box-shadow: 0 0 0 2px var(--color-secondary) inset, var(--shadow-md); }
+.task--current .task__num { background: var(--color-secondary); }
+
+/* « En cours » automatique : indicateur non cliquable, lisible quand actif. */
+.status-btn--auto { cursor: default; }
+.status-btn--auto.is-active { opacity: 1; background: var(--color-secondary); color: #fff; }
+
 .icon-xs { width: 14px; height: 14px; }
 
 /* --- Responsive -------------------------------------------------------- */

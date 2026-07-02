@@ -72,6 +72,57 @@ const activeStatuts = () => {
 };
 const nomEleve = (id) => (state.eleves.find((e) => e.eleve_id === id)?.nom) || "";
 
+/* --- Séquence automatique des tâches par élève -------------------------- */
+function statutFor(eleveId, tacheId) {
+  return state.statuts.get(eleveId)?.get(tacheId) || "";
+}
+/** Tâches assignées à un élève, dans l'ordre du TP. */
+function assignedTasks(eleveId) {
+  return state.taches.filter((t) => state.assignations.get(t.id) === eleveId);
+}
+/** Tâche « courante » d'un élève : la 1ʳᵉ assignée ni terminée ni expirée. */
+function currentTaskId(eleveId) {
+  for (const t of assignedTasks(eleveId)) {
+    if (statutFor(eleveId, t.id) === "complete") continue;
+    if (state.timerOver.has(`${eleveId}:${t.id}`)) continue;
+    return t.id;
+  }
+  return null;
+}
+/** Partage automatique des tâches entre les élèves du poste (round-robin). */
+function autoAssign() {
+  if (state.assignations.size) return;         // déjà réparti (reprise)
+  if (!state.eleves.length) return;
+  state.taches.forEach((t, i) => {
+    const eleve = state.eleves[i % state.eleves.length];
+    if (eleve) state.assignations.set(t.id, eleve.eleve_id);
+  });
+  // Persistance best-effort côté serveur (reprise + dashboard enseignant).
+  for (const [tid, eid] of state.assignations) {
+    putJSON(`/api/poste/${state.posteId}/assignation`, { tache_id: tid, eleve_id: eid }).catch(() => {});
+  }
+}
+/** Passe une tâche en « en cours » (auto-lancement) : local + serveur, une fois. */
+function autoEnCours(eleveId, tacheId) {
+  const st = statutFor(eleveId, tacheId);
+  if (st === "en_cours" || st === "complete") return;
+  if (!state.statuts.has(eleveId)) state.statuts.set(eleveId, new Map());
+  state.statuts.get(eleveId).set(tacheId, "en_cours");
+  if (eleveId === state.activeEleveId) { majTacheUI(tacheId); majProgression(); }
+  patchJSON(`/api/eleve/${eleveId}/tache/${tacheId}`, { statut: "en_cours" }).catch(() => {});
+}
+/** Démarre le décompte de la tâche courante d'un élève si ce n'est pas déjà fait. */
+function ensureLaunch(eleveId) {
+  const cur = currentTaskId(eleveId);
+  if (!cur) return;
+  const cle = `${eleveId}:${cur}`;
+  if (!state.timerStarts.has(cle)) {
+    state.timerStarts.set(cle, Date.now());
+    autoEnCours(eleveId, cur);
+    persistEtat();
+  }
+}
+
 /* ==========================================================================
    1. CONNEXION AU POSTE
    ========================================================================== */
@@ -173,6 +224,8 @@ function initEtatDepuisJoin(sessionId, data) {
   state.activeEleveId = state.eleves[0]?.eleve_id || null;
   state.statuts = new Map();
   state.eleves.forEach((el) => state.statuts.set(el.eleve_id, new Map()));
+  state.assignations = new Map();
+  autoAssign();   // partage automatique des tâches entre les élèves du poste
 }
 
 /* ==========================================================================
@@ -246,6 +299,7 @@ function renderTache(tache, num) {
   const editable = !assignedTo || isMine;
   const locked = statut === "complete";
   const consulted = state.hasChatted.has(state.activeEleveId);
+  const isCurrent = currentTaskId(state.activeEleveId) === tache.id;
 
   const options = [`<option value="">${esc(t("student.assign.none"))}</option>`]
     .concat(state.eleves.map((el) =>
@@ -273,13 +327,21 @@ function renderTache(tache, num) {
        </span>`
     : "";
 
+  // « En cours » est AUTOMATIQUE (piloté par la séquence/minuteur) : simple
+  // indicateur non cliquable, actif sur la tâche en cours.
+  const enCoursBtn = `<button class="btn btn--sm btn--ghost status-btn status-btn--auto${statut === "en_cours" ? " is-active" : ""}"
+      type="button" data-value="en_cours" disabled aria-pressed="${statut === "en_cours"}"
+      title="${esc(t("student.auto.hint"))}">${esc(t("student.status.encours"))}</button>`;
+
   const badge = isMine
     ? `<span class="badge badge--info task__mine"><span class="badge__dot" aria-hidden="true"></span>${esc(t("student.badge.mine"))}</span>`
     : "";
-  const hint = locked ? t("student.locked.hint") : (!editable ? t("student.notMine.hint") : "");
+  const hint = locked ? t("student.locked.hint")
+    : (!editable ? t("student.notMine.hint")
+    : (isCurrent ? t("student.current.hint") : ""));
 
   return `
-    <article class="task${isMine ? " task--mine" : ""}${!editable ? " task--other" : ""}" data-statut="${esc(statut)}" data-id="${esc(tache.id)}">
+    <article class="task${isMine ? " task--mine" : ""}${!editable ? " task--other" : ""}${isCurrent ? " task--current" : ""}" data-statut="${esc(statut)}" data-id="${esc(tache.id)}">
       <div class="task__head">
         <div class="task__title-wrap">
           <span class="task__num" aria-hidden="true">${num}</span>
@@ -296,7 +358,7 @@ function renderTache(tache, num) {
         ${timer}
       </div>
       <div class="task__actions" role="group" aria-label="${esc(t("student.tasks"))}">
-        ${btn("en_cours", "student.status.encours")}
+        ${enCoursBtn}
         ${bloqueBtn}
         ${btn("complete", "student.status.termine")}
       </div>
@@ -328,13 +390,17 @@ document.getElementById("task-list").addEventListener("click", async (e) => {
   if (ancien === statut) return;
 
   statuts.set(tacheId, statut);
-  gererMinuteur(tacheId, statut);
   majTacheUI(tacheId);
   majProgression();
   persistEtat();
 
   try {
     await patchJSON(`/api/eleve/${state.activeEleveId}/tache/${tacheId}`, { statut });
+    // Enchaînement automatique : une tâche terminée lance directement la suivante.
+    if (statut === "complete") {
+      ensureLaunch(state.activeEleveId);
+      renderTaches();
+    }
   } catch (err) {
     // Rollback (dont 409 = tâche verrouillée côté serveur).
     statuts.set(tacheId, ancien);
@@ -354,6 +420,9 @@ document.getElementById("task-list").addEventListener("change", async (e) => {
   const ancien = state.assignations.get(tacheId) || "";
   if (eleveId) state.assignations.set(tacheId, eleveId);
   else state.assignations.delete(tacheId);
+  // La répartition a changé : (re)lance la tâche courante des élèves concernés.
+  if (eleveId) ensureLaunch(eleveId);
+  if (ancien) ensureLaunch(ancien);
   renderTaches();
   try {
     if (eleveId) await putJSON(`/api/poste/${state.posteId}/assignation`, { tache_id: tacheId, eleve_id: eleveId });
@@ -386,52 +455,65 @@ function majProgression() {
 }
 
 /* ==========================================================================
-   Minuteur par étape (alerte sans bloquer)
+   Minuteur séquentiel automatique (par élève)
+   - Décompte de la 1ʳᵉ tâche lancé dès la connexion (ensureLaunch au 1ᵉʳ tick).
+   - Tâche terminée OU temps écoulé → la tâche suivante est lancée directement.
+   - Alerte l'enseignant (retard) au dépassement, sans bloquer l'élève.
    ========================================================================== */
 let minuteurInterval = null;
-function cleTimer(tacheId) { return `${state.activeEleveId}:${tacheId}`; }
-
-function gererMinuteur(tacheId, statut) {
-  const cle = cleTimer(tacheId);
-  if (statut === "en_cours") {
-    if (!state.timerStarts.has(cle)) state.timerStarts.set(cle, Date.now());
-  } else {
-    state.timerStarts.delete(cle);
-    state.timerOver.delete(cle);
-  }
-}
 
 function demarrerMinuteurs() {
-  if (minuteurInterval || state.tempsParTache <= 0) return;
-  minuteurInterval = setInterval(tickMinuteurs, 1000);
-  tickMinuteurs();
+  if (minuteurInterval) return;
+  minuteurInterval = setInterval(tickAll, 1000);
+  tickAll();
 }
 
-function tickMinuteurs() {
+function tickAll() {
   if (state.tempsParTache <= 0) return;
   const budgetMs = state.tempsParTache * 60 * 1000;
-  const statuts = activeStatuts();
+  const now = Date.now();
+
+  // 1) Séquence + minuteur pour TOUS les élèves du poste (même non affichés).
+  for (const el of state.eleves) {
+    const eid = el.eleve_id;
+    ensureLaunch(eid);                      // lance la tâche courante si besoin
+    const cur = currentTaskId(eid);
+    if (!cur) continue;
+    const cle = `${eid}:${cur}`;
+    const start = state.timerStarts.get(cle);
+    if (start == null) continue;
+    if (now - start >= budgetMs && !state.timerOver.has(cle)) {
+      state.timerOver.add(cle);             // temps écoulé
+      const tache = state.taches.find((x) => x.id === cur);
+      signalerRetard(eid, tache);           // alerte enseignant
+      ensureLaunch(eid);                     // lance immédiatement la suivante
+      if (eid === state.activeEleveId) renderTaches();
+    }
+  }
+
+  // 2) Affichage des minuteurs pour l'élève actif uniquement.
+  majAffichageMinuteurs(budgetMs, now);
+}
+
+function majAffichageMinuteurs(budgetMs, now) {
+  const eid = state.activeEleveId;
+  const curId = currentTaskId(eid);
   state.taches.forEach((tache) => {
     const el = document.getElementById(`timer-${cssId(tache.id)}`);
     if (!el) return;
-    const cle = cleTimer(tache.id);
     const txt = el.querySelector(".task-timer__text");
-    if (statuts.get(tache.id) === "en_cours" && state.timerStarts.has(cle)) {
-      const reste = budgetMs - (Date.now() - state.timerStarts.get(cle));
-      if (reste <= 0) {
-        el.classList.add("is-over");
-        txt.textContent = t("student.timer.over");
-        if (!state.timerOver.has(cle)) {
-          state.timerOver.add(cle);
-          signalerRetard(tache);
-        }
-      } else {
-        el.classList.remove("is-over");
-        el.classList.add("is-running");
-        txt.textContent = `${formatMMSS(reste)} ${t("student.timer.remaining")}`;
-      }
+    const cle = `${eid}:${tache.id}`;
+    el.classList.remove("is-over", "is-running");
+    if (statutFor(eid, tache.id) === "complete") {
+      txt.textContent = t("student.timer.done");
+    } else if (state.timerOver.has(cle)) {
+      el.classList.add("is-over");
+      txt.textContent = t("student.timer.over");
+    } else if (tache.id === curId && state.timerStarts.has(cle)) {
+      const reste = Math.max(0, budgetMs - (now - state.timerStarts.get(cle)));
+      el.classList.add("is-running");
+      txt.textContent = `${formatMMSS(reste)} ${t("student.timer.remaining")}`;
     } else {
-      el.classList.remove("is-over", "is-running");
       txt.textContent = `${t("student.timer.label")} ${state.tempsParTache} min`;
     }
   });
@@ -443,9 +525,10 @@ function formatMMSS(ms) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-async function signalerRetard(tache) {
-  toast(t("student.timer.overToast", { tache: tache.titre }), "info");
-  try { await postJSON(`/api/eleve/${state.activeEleveId}/tache/${tache.id}/retard`, {}); }
+async function signalerRetard(eleveId, tache) {
+  if (!tache) return;
+  if (eleveId === state.activeEleveId) toast(t("student.timer.overToast", { tache: tache.titre }), "info");
+  try { await postJSON(`/api/eleve/${eleveId}/tache/${tache.id}/retard`, {}); }
   catch (_) { /* alerte best-effort */ }
   persistEtat();
 }
